@@ -1,0 +1,17 @@
+{
+  "name": "Neon Backstage — 3D Live House",
+  "short_name": "Neon Backstage",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "theme_color": "#080611",
+  "background_color": "#080611",
+  "icons": [
+    {
+      "src": "/icons/neon-backstage.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

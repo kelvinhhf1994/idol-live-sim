@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#080611" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Neon Backstage" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/neon-backstage.svg" />
+    <title>Neon Backstage — 3D Live House</title>
+  </head>
+  <body>
+    <main id="game">
+      <canvas id="world" aria-label="3D Live House"></canvas>
+
+      <section id="entry" class="entry-screen">
+        <div class="entry-screen__noise"></div>
+        <div class="entry-card">
+          <p class="eyebrow">HONG KONG · TONIGHT</p>
+          <h1>NEON<br />BACKSTAGE</h1>
+          <p class="entry-card__copy">走入現場，穿過人群，從你的角度感受舞台。</p>
+          <button id="enter-button" class="primary-button" type="button">進入場館</button>
+          <p id="loading-label" class="loading-label">場館準備完成</p>
+        </div>
+      </section>
+
+      <section id="hud" class="hud" hidden>
+        <div class="venue-badge">
+          <span class="venue-badge__dot"></span>
+          <span>LIVE · NEON BACKSTAGE</span>
+        </div>
+
+        <div id="joystick" class="joystick" aria-label="移動搖桿">
+          <div class="joystick__ring"></div>
+          <div id="joystick-knob" class="joystick__knob"></div>
+        </div>
+
+        <div id="look-zone" class="look-zone" aria-label="拖曳控制鏡頭"></div>
+
+        <button id="lift-button" class="lift-button" type="button" aria-pressed="false">LIFT</button>
+        <button id="mosh-button" class="mosh-button" type="button" aria-pressed="false" aria-disabled="false">MOSH</button>
+        <button id="two-step-button" class="two-step-button" type="button" aria-pressed="false">2STEP</button>
+        <button id="jump-point-button" class="jump-point-button" type="button" aria-label="跳指" aria-pressed="false">跳指</button>
+        <button id="jump-button" class="jump-button" type="button">跳躍</button>
+
+        <div class="hud-actions">
+          <button id="camera-button" class="icon-button" type="button" aria-label="切換視角">
+            <span class="icon-button__icon">◉</span>
+            <span id="camera-label">第三人稱</span>
+          </button>
+          <button id="video-button" class="icon-button" type="button" aria-label="開啟現場影片">
+            <span class="icon-button__icon">▶</span>
+            <span>現場影片</span>
+          </button>
+          <button id="fullscreen-button" class="icon-button" type="button" aria-label="全螢幕">
+            <span class="icon-button__icon">⛶</span>
+            <span id="fullscreen-label">全螢幕</span>
+          </button>
+        </div>
+
+        <p class="look-hint">在右側拖曳鏡頭</p>
+        <p class="desktop-hint">WASD 移動 · Space 跳躍 · 拖曳鏡頭</p>
+      </section>
+
+      <aside id="video-panel" class="video-panel" hidden>
+        <header>
+          <div>
+            <p class="eyebrow">OFFICIAL YOUTUBE PLAYER</p>
+            <h2>現場影片</h2>
+          </div>
+          <button id="video-close" class="close-button" type="button" aria-label="關閉影片">×</button>
+        </header>
+        <div class="video-frame">
+          <div id="youtube-player"></div>
+        </div>
+        <form id="video-url-form" class="video-url-form" novalidate>
+          <label for="video-url-input">YouTube 連結或影片 ID</label>
+          <div class="video-url-form__controls">
+            <input
+              id="video-url-input"
+              name="youtube-url"
+              type="url"
+              inputmode="url"
+              autocomplete="url"
+              placeholder="https://www.youtube.com/watch?v=…"
+            />
+            <button class="video-load-button" type="submit">載入影片</button>
+          </div>
+          <p id="video-url-error" class="video-url-error" role="alert" hidden>請輸入有效的 YouTube 連結</p>
+        </form>
+        <p id="video-status" class="video-status">按播放器開始播放。舞台動畫與影片獨立運作。</p>
+      </aside>
+
+      <section
+        id="fullscreen-guide"
+        class="fullscreen-guide"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="fullscreen-guide-title"
+        hidden
+      >
+        <div class="fullscreen-guide__card">
+          <h2 id="fullscreen-guide-title">使用全螢幕模式</h2>
+          <p>點按分享按鈕，再選擇「加入主畫面」，從主畫面開啟即可使用全螢幕模式。</p>
+          <button id="fullscreen-guide-close" class="primary-button" type="button">知道了</button>
+        </div>
+      </section>
+
+      <section id="rotate-overlay" class="rotate-overlay">
+        <div class="rotate-phone">↻</div>
+        <h2>請旋轉手機</h2>
+        <p>橫向畫面才能進入 Live House</p>
+      </section>
+
+      <section id="error-screen" class="error-screen" hidden>
+        <h2>未能開啟 3D 場館</h2>
+        <p id="error-message">你的瀏覽器可能不支援 WebGL。</p>
+        <button id="reload-button" class="primary-button" type="button">重新載入</button>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
