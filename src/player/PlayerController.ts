@@ -419,6 +419,7 @@ export class PlayerController {
 
   debugSetTwoStepPhase(progress: number): void {
     this.twoStep.debugSetProgress(progress);
+    writeTwoStepPose(this.twoStep.progress, this.twoStepPose);
   }
 
   debugSetMoshPhase(progress: number): void {

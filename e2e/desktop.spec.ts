@@ -68,17 +68,23 @@ test("moves with WASD only while the two-step button is held", async ({ page }) 
     .poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().twoStepActive))
     .toBe(true);
 
-  await page.evaluate(() => window.__liveHouseDebug?.setTwoStepPhase(0.25));
-  const rightSweep = await page.evaluate(() => window.__liveHouseDebug?.snapshot().twoStepPose);
-  expect(rightSweep?.rightLegX).toBeLessThanOrEqual(0.7);
-  expect(rightSweep?.rightLegZ).toBeLessThan(-0.2);
-  expect(rightSweep?.bodyX).toBe(0);
-  expect(rightSweep?.chestX).toBeLessThan(-0.18);
-
-  await page.evaluate(() => window.__liveHouseDebug?.setTwoStepPhase(0.75));
-  const leftSweep = await page.evaluate(() => window.__liveHouseDebug?.snapshot().twoStepPose);
-  expect(leftSweep?.leftLegX).toBeCloseTo(rightSweep?.rightLegX ?? 0);
-  expect(leftSweep?.leftLegZ).toBeCloseTo(-(rightSweep?.rightLegZ ?? 0));
+  const sweeps = await page.evaluate(() => {
+    const debug = window.__liveHouseDebug;
+    debug?.setTwoStepPhase(0.25);
+    const rightSweep = debug?.snapshot().twoStepPose;
+    debug?.setTwoStepPhase(0.75);
+    const leftSweep = debug?.snapshot().twoStepPose;
+    return {
+      rightSweep: rightSweep ? { ...rightSweep } : null,
+      leftSweep: leftSweep ? { ...leftSweep } : null,
+    };
+  });
+  expect(sweeps.rightSweep?.rightLegX).toBeLessThanOrEqual(0.7);
+  expect(sweeps.rightSweep?.rightLegZ).toBeLessThan(-0.2);
+  expect(sweeps.rightSweep?.bodyX).toBe(0);
+  expect(sweeps.rightSweep?.chestX).toBeLessThan(-0.18);
+  expect(sweeps.leftSweep?.leftLegX).toBeCloseTo(sweeps.rightSweep?.rightLegX ?? 0);
+  expect(sweeps.leftSweep?.leftLegZ).toBeCloseTo(-(sweeps.rightSweep?.rightLegZ ?? 0));
 
   await page.evaluate(() => window.__liveHouseDebug?.placePlayer(0, 8));
   const startZ = (await page.evaluate(() => window.__liveHouseDebug?.snapshot().player.z)) ?? 0;
