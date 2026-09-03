@@ -22,4 +22,28 @@ describe("moveCircleWithCollisions", () => {
 
     expect(result.z).toBeCloseTo(0.5);
   });
+
+  it("blocks a low airborne crossing but allows clearance above collider top", () => {
+    const barrier = { minX: -1, maxX: 1, minZ: -0.1, maxZ: 0.1, maxY: 1.32 };
+
+    expect(
+      moveCircleWithCollisions({ x: 0, z: 1 }, { x: 0, z: -2 }, 0.34, [barrier], 1.2).z,
+    ).toBe(1);
+    expect(
+      moveCircleWithCollisions({ x: 0, z: 1 }, { x: 0, z: -2 }, 0.34, [barrier], 1.32).z,
+    ).toBe(-1);
+  });
+
+  it("does not tunnel through a thin low barrier with a large delta", () => {
+    const barrier = { minX: -1, maxX: 1, minZ: -0.02, maxZ: 0.02, maxY: 0.75 };
+    const result = moveCircleWithCollisions(
+      { x: 0, z: 2 },
+      { x: 0, z: -4 },
+      0.34,
+      [barrier],
+      0.5,
+    );
+
+    expect(result.z).toBe(2);
+  });
 });

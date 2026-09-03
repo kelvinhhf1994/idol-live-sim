@@ -20,7 +20,6 @@ export function createVenue(definition: VenueDefinition): VenueBuild {
   const group = new THREE.Group();
   group.name = definition.id;
   const colliders = definition.colliders.map((collider) => ({ ...collider }));
-  colliders.push({ minX: -4.55, maxX: 4.55, minZ: -9.52, maxZ: -9.38 });
 
   const concrete = material(0x25242c, 0.9);
   const black = material(0x0d0b12, 0.78);
@@ -92,14 +91,35 @@ export function createVenue(definition: VenueDefinition): VenueBuild {
     post.rotation.z = index % 2 === 0 ? 0.04 : -0.04;
   }
 
-  const stageTop = addBox(9, 0.75, 4.7, stage, 0, 0.375, -12.6);
+  const stagePlatform = definition.platforms[0];
+  if (!stagePlatform) throw new Error("The venue must define a stage platform");
+  const stageWidth = stagePlatform.bounds.maxX - stagePlatform.bounds.minX;
+  const stageDepth = stagePlatform.bounds.maxZ - stagePlatform.bounds.minZ;
+  const stageX = (stagePlatform.bounds.minX + stagePlatform.bounds.maxX) / 2;
+  const stageZ = (stagePlatform.bounds.minZ + stagePlatform.bounds.maxZ) / 2;
+  const stageTop = addBox(
+    stageWidth,
+    stagePlatform.height,
+    stageDepth,
+    stage,
+    stageX,
+    stagePlatform.height / 2,
+    stageZ,
+  );
   stageTop.receiveShadow = true;
-  addBox(9.4, 0.12, 0.26, pink, 0, 0.72, -10.22, false);
-  addBox(9.4, 0.12, 0.26, violet, 0, 0.58, -10.22, false);
-  createStageDetails(group, steel, black, definition.show.lightColors);
+  addBox(stageWidth + 0.4, 0.12, 0.26, pink, stageX, 0.72, stagePlatform.bounds.maxZ + 0.03, false);
+  addBox(stageWidth + 0.4, 0.12, 0.26, violet, stageX, 0.58, stagePlatform.bounds.maxZ + 0.03, false);
+  createStageDetails(
+    group,
+    steel,
+    black,
+    definition.show.lightColors,
+    stagePlatform,
+    definition.crowdBarrier,
+  );
 
   const backdrop = new THREE.Mesh(
-    new THREE.PlaneGeometry(8.5, 4.6),
+    new THREE.PlaneGeometry(stageWidth - 0.5, 4.6),
     new THREE.MeshBasicMaterial({
       map: curtainTexture(),
       side: THREE.DoubleSide,
@@ -126,9 +146,9 @@ export function createVenue(definition: VenueDefinition): VenueBuild {
   soundLabel.position.set(-6.85, 2.35, 1.88);
   group.add(soundLabel);
 
-  addBox(0.8, 5.4, 0.24, black, -8.6, 2.7, -9.75);
-  addBox(1.2, 5.4, 0.24, black, -6.2, 2.7, -9.75);
-  addBox(0.24, 5.4, 4.4, black, -5.62, 2.7, -12);
+  addBox(0.5, 5.4, 0.24, black, -8.75, 2.7, -9.75);
+  addBox(0.4, 5.4, 0.24, black, -7.1, 2.7, -9.75);
+  addBox(0.24, 5.4, 4.4, black, -7.05, 2.7, -12);
   const backstageLabel = labelPlane("BACKSTAGE", "#ff2f7d", "#ffffff", 2, 0.55);
   backstageLabel.position.set(-7.5, 3.25, -9.61);
   group.add(backstageLabel);
@@ -137,7 +157,7 @@ export function createVenue(definition: VenueDefinition): VenueBuild {
   exitLabel.position.set(7.7, 3.8, -15.77);
   group.add(exitLabel);
 
-  const stageLights = createStageLights(group, definition.show.lightColors);
+  const stageLights = createStageLights(group, definition.show.lightColors, stagePlatform);
   const performerPoints = definition.show.performerPoints.map(([x, y, z]) => new THREE.Vector3(x, y, z));
   const audiencePoints = definition.show.audiencePoints.map(([x, y, z]) => new THREE.Vector3(x, y, z));
 
@@ -244,28 +264,42 @@ function createStageDetails(
   steel: THREE.Material,
   black: THREE.Material,
   colors: readonly number[],
+  stage: VenueDefinition["platforms"][number],
+  barrier: VenueDefinition["crowdBarrier"],
 ): void {
-  createStageTruss(group, steel);
-  createFixtureArray(group, black, colors);
-  createSpeakerStacks(group);
-  createWedgeMonitors(group, black);
-  createCrowdBarrier(group, steel);
+  createStageTruss(group, steel, stage);
+  createFixtureArray(group, black, colors, stage);
+  createSpeakerStacks(group, stage);
+  createWedgeMonitors(group, black, stage);
+  createCrowdBarrier(group, steel, barrier);
 }
 
-function createStageTruss(group: THREE.Group, steel: THREE.Material): void {
+function createStageTruss(
+  group: THREE.Group,
+  steel: THREE.Material,
+  stage: VenueDefinition["platforms"][number],
+): void {
   const bars: InstanceTransform[] = [];
-  for (const z of [-10.65, -12.05, -13.45, -14.85]) {
-    bars.push([0, 5.46, z, 0, 0, Math.PI / 2, 1, 8.9, 1]);
+  const { bounds } = stage;
+  const width = bounds.maxX - bounds.minX;
+  const depth = bounds.maxZ - bounds.minZ;
+  const centerZ = (bounds.minZ + bounds.maxZ) / 2;
+  for (let index = 0; index < 4; index += 1) {
+    const z = bounds.maxZ - 0.3 - (index * (depth - 0.6)) / 3;
+    bars.push([0, 5.46, z, 0, 0, Math.PI / 2, 1, width - 0.1, 1]);
   }
-  for (const x of [-4.4, -2.2, 0, 2.2, 4.4]) {
-    bars.push([x, 5.46, -12.75, Math.PI / 2, 0, 0, 1, 4.2, 1]);
+  for (let index = 0; index < 5; index += 1) {
+    const x = bounds.minX + 0.225 + (index * (width - 0.45)) / 4;
+    bars.push([x, 5.46, centerZ, Math.PI / 2, 0, 0, 1, depth - 0.7, 1]);
   }
+  const frontZ = bounds.maxZ - 0.3;
+  const sideX = width / 2 - 0.175;
   bars.push(
-    [-4.55, 3.15, -10.55, 0, 0, 0, 1, 5, 1],
-    [4.55, 3.15, -10.55, 0, 0, 0, 1, 5, 1],
-    [0, 5.68, -10.55, 0, 0, Math.PI / 2, 1, 9.1, 1],
-    [-2.25, 5.47, -10.56, 0, 0, 0.08, 1, 4.5, 1],
-    [2.25, 5.47, -10.56, 0, 0, -0.08, 1, 4.5, 1],
+    [-sideX, 3.15, frontZ, 0, 0, 0, 1, 5, 1],
+    [sideX, 3.15, frontZ, 0, 0, 0, 1, 5, 1],
+    [0, 5.68, frontZ, 0, 0, Math.PI / 2, 1, width - 0.05, 1],
+    [-width / 4, 5.47, frontZ - 0.01, 0, 0, 0.08, 1, width / 2, 1],
+    [width / 4, 5.47, frontZ - 0.01, 0, 0, -0.08, 1, width / 2, 1],
   );
   const geometry = new THREE.CylinderGeometry(0.055, 0.055, 1, 6);
   const truss = new THREE.InstancedMesh(geometry, steel, bars.length);
@@ -279,10 +313,13 @@ function createFixtureArray(
   group: THREE.Group,
   black: THREE.Material,
   colors: readonly number[],
+  stage: VenueDefinition["platforms"][number],
 ): void {
   const positions: Array<readonly [number, number, number]> = [];
-  for (const z of [-10.85, -12.2, -13.55]) {
-    for (const x of [-3.6, -1.8, 0, 1.8, 3.6]) {
+  const { bounds } = stage;
+  const centerZ = (bounds.minZ + bounds.maxZ) / 2;
+  for (const z of [bounds.maxZ - 0.58, centerZ, bounds.minZ + 0.58]) {
+    for (const x of [-4.5, -2.25, 0, 2.25, 4.5]) {
       positions.push([x, 5.18, z]);
     }
   }
@@ -304,7 +341,10 @@ function createFixtureArray(
   group.add(fixtures, lenses);
 }
 
-function createSpeakerStacks(group: THREE.Group): void {
+function createSpeakerStacks(
+  group: THREE.Group,
+  stage: VenueDefinition["platforms"][number],
+): void {
   const cabinetGeometry = new THREE.BoxGeometry(1.05, 0.62, 0.72);
   const cabinetMaterial = new THREE.MeshStandardMaterial({
     color: 0x202129,
@@ -322,12 +362,13 @@ function createSpeakerStacks(group: THREE.Group): void {
   });
   const grills = new THREE.InstancedMesh(grillGeometry, grillMaterial, 10);
   let index = 0;
-  for (const x of [-5.15, 5.15]) {
+  const speakerZ = stage.bounds.maxZ - 0.9;
+  for (const x of [-6.3, 6.3]) {
     for (let level = 0; level < 5; level += 1) {
       const y = 1.1 + level * 0.61;
       const tilt = x < 0 ? -0.025 * level : 0.025 * level;
-      setInstanceTransform(cabinets, index, [x, y, -11.2, 0, 0, tilt, 1, 1, 1]);
-      setInstanceTransform(grills, index, [x, y, -10.835, 0, 0, tilt, 1, 1, 1]);
+      setInstanceTransform(cabinets, index, [x, y, speakerZ, 0, 0, tilt, 1, 1, 1]);
+      setInstanceTransform(grills, index, [x, y, speakerZ + 0.365, 0, 0, tilt, 1, 1, 1]);
       index += 1;
     }
   }
@@ -337,7 +378,11 @@ function createSpeakerStacks(group: THREE.Group): void {
   group.add(cabinets, grills);
 }
 
-function createWedgeMonitors(group: THREE.Group, black: THREE.Material): void {
+function createWedgeMonitors(
+  group: THREE.Group,
+  black: THREE.Material,
+  stage: VenueDefinition["platforms"][number],
+): void {
   const vertices = new Float32Array([
     -0.5, 0, 0.38, 0.5, 0, 0.38, -0.5, 0, -0.38, 0.5, 0, -0.38,
     -0.5, 0.12, 0.38, 0.5, 0.12, 0.38, -0.5, 0.48, -0.38, 0.5, 0.48, -0.38,
@@ -356,24 +401,34 @@ function createWedgeMonitors(group: THREE.Group, black: THREE.Material): void {
     new THREE.MeshStandardMaterial({ color: 0x5c5f69, roughness: 0.82, metalness: 0.28 }),
     4,
   );
-  [-3, -1, 1, 3].forEach((x, index) => {
-    setInstanceTransform(wedges, index, [x, 0.76, -10.82, 0, 0, 0, 1, 1, 1]);
-    setInstanceTransform(grills, index, [x, 1.07, -10.79, -1.0, 0, 0, 1, 1, 1]);
+  const z = stage.bounds.maxZ - 0.75;
+  [-4.2, -1.4, 1.4, 4.2].forEach((x, index) => {
+    setInstanceTransform(wedges, index, [x, 0.76, z, 0, 0, 0, 1, 1, 1]);
+    setInstanceTransform(grills, index, [x, 1.07, z + 0.03, -1.0, 0, 0, 1, 1, 1]);
   });
   wedges.instanceMatrix.needsUpdate = true;
   grills.instanceMatrix.needsUpdate = true;
   group.add(wedges, grills);
 }
 
-function createCrowdBarrier(group: THREE.Group, steel: THREE.Material): void {
+function createCrowdBarrier(
+  group: THREE.Group,
+  steel: THREE.Material,
+  barrier: VenueDefinition["crowdBarrier"],
+): void {
   const transforms: InstanceTransform[] = [];
-  for (const x of [-3.3, -1.1, 1.1, 3.3]) {
-    transforms.push([x, 1.28, -9.45, 0, 0, Math.PI / 2, 1, 2.08, 1]);
-    transforms.push([x, 0.68, -9.45, 0, 0, Math.PI / 2, 1, 2.08, 1]);
+  const width = barrier.maxX - barrier.minX;
+  const z = (barrier.minZ + barrier.maxZ) / 2;
+  const segmentLength = width / 5;
+  for (let index = 0; index < 5; index += 1) {
+    const x = barrier.minX + segmentLength * (index + 0.5);
+    transforms.push([x, 1.28, z, 0, 0, Math.PI / 2, 1, segmentLength * 0.95, 1]);
+    transforms.push([x, 0.68, z, 0, 0, Math.PI / 2, 1, segmentLength * 0.95, 1]);
   }
-  for (const x of [-4.4, -2.2, 0, 2.2, 4.4]) {
-    transforms.push([x, 0.68, -9.45, 0, 0, 0, 1, 1.28, 1]);
-    transforms.push([x, 0.08, -9.45, Math.PI / 2, 0, 0, 1, 0.58, 1]);
+  for (let index = 0; index <= 5; index += 1) {
+    const x = barrier.minX + segmentLength * index;
+    transforms.push([x, 0.68, z, 0, 0, 0, 1, 1.28, 1]);
+    transforms.push([x, 0.08, z, Math.PI / 2, 0, 0, 1, 0.58, 1]);
   }
   const barrierMaterial = (steel as THREE.MeshStandardMaterial).clone();
   barrierMaterial.color.setHex(0x858892);
@@ -403,7 +458,11 @@ function setInstanceTransform(
   mesh.setMatrixAt(index, matrix);
 }
 
-function createStageLights(group: THREE.Group, colors: readonly number[]): THREE.SpotLight[] {
+function createStageLights(
+  group: THREE.Group,
+  colors: readonly number[],
+  stage: VenueDefinition["platforms"][number],
+): THREE.SpotLight[] {
   const hemisphere = new THREE.HemisphereLight(0x46365f, 0x07060b, 1.2);
   const ambient = new THREE.AmbientLight(0x6e607f, 1.3);
   group.add(hemisphere, ambient);
@@ -418,10 +477,11 @@ function createStageLights(group: THREE.Group, colors: readonly number[]): THREE
   key.shadow.camera.bottom = -12;
   group.add(key);
 
+  const centerZ = (stage.bounds.minZ + stage.bounds.maxZ) / 2;
   const stageLights = colors.slice(0, 4).map((color, index) => {
     const light = new THREE.SpotLight(color, 38, 18, 0.45, 0.7, 1.4);
-    light.position.set(-3.6 + index * 2.4, 5.1, -10.9);
-    light.target.position.set(-3 + index * 2, 1, -12.5);
+    light.position.set(-4.5 + index * 3, 5.1, stage.bounds.maxZ - 1);
+    light.target.position.set(-3.75 + index * 2.5, 1, centerZ);
     light.castShadow = false;
     group.add(light, light.target);
     return light;

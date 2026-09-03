@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { ENABLE_YOUTUBE } from "../config/features";
 import { GENERIC_VENUE } from "../config/venue";
 import { combineMovementInputs, KeyboardInput } from "../input/KeyboardInput";
 import { JumpPointButton } from "../input/JumpPointButton";
@@ -6,7 +7,22 @@ import { MoshButton } from "../input/MoshButton";
 import { TwoStepButton } from "../input/TwoStepButton";
 import { VirtualJoystick } from "../input/VirtualJoystick";
 import { CameraController } from "../player/CameraController";
+import {
+  DEFAULT_GAME_SETTINGS,
+  loadGameSettings,
+  resetGameSettings,
+  saveGameSettings,
+  type GameSettings,
+} from "../player/gameSettings";
+import {
+  handlePenlightColorSelect,
+  loadPenlightState,
+  PENLIGHT_COLORS,
+  savePenlightState,
+  type PenlightPose,
+} from "../player/penlight";
 import { PlayerController } from "../player/PlayerController";
+import type { TwoStepPose } from "../player/TwoStepAction";
 import { createLowPolyPerson } from "../scene/createCharacter";
 import { createVenue, type VenueBuild } from "../scene/createVenue";
 import { ShowController } from "../show/ShowController";
@@ -17,16 +33,36 @@ export interface AppSnapshot {
   player: { x: number; y: number; z: number };
   supporters: readonly { x: number; y: number; z: number }[];
   cameraYaw: number;
+  camera: { x: number; y: number; z: number };
+  cameraHorizontalDistance: number;
+  cameraDistance: number;
   playerYaw: number;
   cameraMode: "first" | "third";
   moshActive: boolean;
+  moshHeld: boolean;
+  moshWindmillTurns: number;
+  penlightPose: PenlightPose;
+  penlightColorId: string;
+  settings: GameSettings;
   twoStepActive: boolean;
+  twoStepPhase: number;
+  twoStepPose: Readonly<TwoStepPose>;
   jumpPointActive: boolean;
   jumpPointHeld: boolean;
   liftActive: boolean;
   supporterVisible: boolean;
+  groundHeight: number;
+  onStage: boolean;
   knockedAudienceCount: number;
   returningAudienceCount: number;
+  knockedPerformerCount: number;
+  returningPerformerCount: number;
+  firstActivePerformer: {
+    x: number;
+    y: number;
+    z: number;
+    phase: "home" | "airborne" | "down" | "getting-up" | "returning";
+  } | null;
   firstActiveAudience: {
     x: number;
     y: number;
@@ -49,7 +85,7 @@ export class App {
   private readonly player: PlayerController;
   private readonly cameraController: CameraController;
   private readonly showController: ShowController;
-  private readonly youtubePlayer: YouTubePlayer;
+  private readonly youtubePlayer: YouTubePlayer | null;
   private readonly entryScreen = requireElement<HTMLElement>("entry");
   private readonly hud = requireElement<HTMLElement>("hud");
   private readonly enterButton = requireElement<HTMLButtonElement>("enter-button");
@@ -62,6 +98,10 @@ export class App {
   private readonly cameraLabel = requireElement<HTMLElement>("camera-label");
   private readonly videoButton = requireElement<HTMLButtonElement>("video-button");
   private readonly videoCloseButton = requireElement<HTMLButtonElement>("video-close");
+  private readonly videoSeekBackward = requireElement<HTMLButtonElement>("video-seek-backward");
+  private readonly videoPlaybackToggle = requireElement<HTMLButtonElement>("video-playback-toggle");
+  private readonly videoSeekForward = requireElement<HTMLButtonElement>("video-seek-forward");
+  private readonly videoExpand = requireElement<HTMLButtonElement>("video-expand");
   private readonly videoUrlForm = requireElement<HTMLFormElement>("video-url-form");
   private readonly videoUrlInput = requireElement<HTMLInputElement>("video-url-input");
   private readonly videoUrlError = requireElement<HTMLElement>("video-url-error");
@@ -70,6 +110,19 @@ export class App {
   private readonly fullscreenGuide = requireElement<HTMLElement>("fullscreen-guide");
   private readonly fullscreenGuideClose =
     requireElement<HTMLButtonElement>("fullscreen-guide-close");
+  private readonly penlightButton = requireElement<HTMLButtonElement>("penlight-button");
+  private readonly settingsButton = requireElement<HTMLButtonElement>("settings-button");
+  private readonly raisePenlightButton = requireElement<HTMLButtonElement>("raise-penlight-button");
+  private readonly wiperPenlightButton = requireElement<HTMLButtonElement>("wiper-penlight-button");
+  private readonly beatPenlightButton = requireElement<HTMLButtonElement>("beat-penlight-button");
+  private readonly pointPenlightButton = requireElement<HTMLButtonElement>("point-penlight-button");
+  private readonly penlightPanel = requireElement<HTMLElement>("penlight-panel");
+  private readonly settingsPanel = requireElement<HTMLElement>("settings-panel");
+  private readonly penlightColorGrid = requireElement<HTMLElement>("penlight-color-grid");
+  private readonly penlightPanelClose = requireElement<HTMLButtonElement>("penlight-panel-close");
+  private readonly settingsPanelClose = requireElement<HTMLButtonElement>("settings-panel-close");
+  private readonly settingsReset = requireElement<HTMLButtonElement>("settings-reset");
+  private readonly videoPanel = requireElement<HTMLElement>("video-panel");
   private frameId = 0;
   private lastWidth = 0;
   private lastHeight = 0;
@@ -99,9 +152,12 @@ export class App {
 
     const playerRig = createLowPolyPerson({
       hairStyle: "short",
+      glowStick: true,
       palette: { top: 0xd6ff3f, bottom: 0x24202d, accent: 0xff2f7d },
     });
     this.player = new PlayerController(playerRig, GENERIC_VENUE, this.venue.colliders);
+    this.player.setPenlightState(loadPenlightState(window.localStorage));
+    this.player.setGameSettings(loadGameSettings(window.localStorage));
     this.scene.add(this.player.group, this.player.lift.group);
     this.showController = new ShowController(
       this.venue.performerPoints,
@@ -166,22 +222,61 @@ export class App {
       this.player,
     );
     this.cameraController.update(1, this.player.position);
-    this.youtubePlayer = new YouTubePlayer(
-      GENERIC_VENUE.youtubeVideoId,
-      requireElement<HTMLElement>("video-panel"),
-      requireElement<HTMLElement>("youtube-player"),
-      requireElement<HTMLElement>("video-status"),
-    );
+    if (ENABLE_YOUTUBE) {
+      this.youtubePlayer = new YouTubePlayer(
+        GENERIC_VENUE.youtubeVideoId,
+        this.videoPanel,
+        requireElement<HTMLElement>("youtube-player"),
+        requireElement<HTMLElement>("video-status"),
+        {
+          toggleButton: this.videoButton,
+          minimizeButton: this.videoCloseButton,
+          backwardButton: this.videoSeekBackward,
+          playbackButton: this.videoPlaybackToggle,
+          forwardButton: this.videoSeekForward,
+          expandButton: this.videoExpand,
+        },
+      );
+      this.videoButton.hidden = false;
+      this.videoButton.addEventListener("click", this.handleVideoOpen);
+      this.videoUrlForm.addEventListener("submit", this.handleVideoLoad);
+    } else {
+      this.youtubePlayer = null;
+      this.videoButton.hidden = true;
+      this.videoPanel.hidden = true;
+      document.documentElement.dataset.youtubeEnabled = "false";
+    }
+
+    this.buildPenlightColorGrid();
+    this.syncSettingsControls(this.player.gameSettings);
+    this.syncPenlightChrome();
 
     this.enterButton.addEventListener("click", this.handleEnter);
     this.jumpButton.addEventListener("pointerdown", this.handleJump);
     this.liftButton.addEventListener("click", this.handleLiftToggle);
     this.cameraButton.addEventListener("click", this.handleCameraToggle);
-    this.videoButton.addEventListener("click", this.handleVideoOpen);
-    this.videoCloseButton.addEventListener("click", this.handleVideoClose);
-    this.videoUrlForm.addEventListener("submit", this.handleVideoLoad);
     this.fullscreenButton.addEventListener("click", this.handleFullscreen);
     this.fullscreenGuideClose.addEventListener("click", this.handleFullscreenGuideClose);
+    this.penlightButton.addEventListener("click", this.handlePenlightPanelToggle);
+    this.settingsButton.addEventListener("click", this.handleSettingsPanelToggle);
+    this.penlightPanelClose.addEventListener("click", () => this.setPanelOpen("penlight", false));
+    this.settingsPanelClose.addEventListener("click", () => this.setPanelOpen("settings", false));
+    this.raisePenlightButton.addEventListener("click", () => this.handleCheerPose("raise"));
+    this.wiperPenlightButton.addEventListener("click", () => this.handleCheerPose("wiper"));
+    this.beatPenlightButton.addEventListener("click", () => this.handleCheerPose("beat"));
+    this.pointPenlightButton.addEventListener("click", () => this.handleCheerPose("point"));
+    this.settingsReset.addEventListener("click", this.handleSettingsReset);
+    this.penlightPanel.querySelectorAll("[data-close-panel]").forEach((el) => {
+      el.addEventListener("click", () => this.setPanelOpen("penlight", false));
+    });
+    this.settingsPanel.querySelectorAll("[data-close-panel]").forEach((el) => {
+      el.addEventListener("click", () => this.setPanelOpen("settings", false));
+    });
+    for (const key of Object.keys(DEFAULT_GAME_SETTINGS) as (keyof GameSettings)[]) {
+      requireElement<HTMLInputElement>(`setting-${key}`).addEventListener("input", () => {
+        this.handleSettingInput(key);
+      });
+    }
     document.addEventListener("fullscreenchange", this.syncFullscreenState);
     document.addEventListener("webkitfullscreenchange", this.syncFullscreenState);
     this.syncFullscreenState();
@@ -198,6 +293,7 @@ export class App {
       z: position.z,
     }));
     const audienceStatus = this.showController.getAudienceStatus();
+    const performerStatus = this.showController.getPerformerStatus();
     return {
       player: {
         x: this.player.position.x,
@@ -206,20 +302,65 @@ export class App {
       },
       supporters,
       cameraYaw: this.cameraController.yaw,
+      camera: {
+        x: this.camera.position.x,
+        y: this.camera.position.y,
+        z: this.camera.position.z,
+      },
+      cameraHorizontalDistance: Math.hypot(
+        this.camera.position.x - this.player.position.x,
+        this.camera.position.z - this.player.position.z,
+      ),
+      cameraDistance: this.camera.position.distanceTo(this.player.position),
       playerYaw: this.player.group.rotation.y,
       cameraMode: this.cameraController.mode,
       moshActive: this.player.moshActive,
+      moshHeld: this.player.moshHeld,
+      moshWindmillTurns: this.player.moshWindmillTurns,
+      penlightPose: this.player.penlight.pose,
+      penlightColorId: this.player.penlight.colorId,
+      settings: { ...this.player.gameSettings },
       twoStepActive: this.player.twoStepActive,
+      twoStepPhase: this.player.twoStepPhase,
+      twoStepPose: { ...this.player.twoStepPoseState },
       jumpPointActive: this.player.jumpPointActive,
       jumpPointHeld: this.player.jumpPointHeld,
       liftActive: this.player.liftActive,
       supporterVisible: this.player.supporterVisible,
+      groundHeight: this.player.groundHeight,
+      onStage: this.player.groundHeight > GENERIC_VENUE.spawn.y,
       ...audienceStatus,
+      ...performerStatus,
     };
   }
 
   triggerAudienceKnockback(mode: "mosh" | "lift"): boolean {
     return this.showController.triggerAudienceKnockback(mode);
+  }
+
+  triggerPerformerKnockback(mode: "mosh" | "lift"): boolean {
+    return this.showController.triggerPerformerKnockback(mode);
+  }
+
+  debugPlacePlayer(x: number, z: number): void {
+    this.player.debugPlaceOnGround(x, z);
+  }
+
+  debugSetTwoStepPhase(progress: number): void {
+    this.player.debugSetTwoStepPhase(progress);
+  }
+
+  debugSetMoshPhase(progress: number): void {
+    this.player.debugSetMoshPhase(progress);
+  }
+
+  debugSetCameraYaw(yaw: number): void {
+    this.debugSetCameraView(yaw, -0.12);
+  }
+
+  debugSetCameraView(yaw: number, pitch: number): void {
+    this.cameraController.debugSetView(yaw, pitch);
+    this.cameraController.update(1, this.player.position);
   }
 
   dispose(): void {
@@ -228,9 +369,10 @@ export class App {
     this.jumpButton.removeEventListener("pointerdown", this.handleJump);
     this.liftButton.removeEventListener("click", this.handleLiftToggle);
     this.cameraButton.removeEventListener("click", this.handleCameraToggle);
-    this.videoButton.removeEventListener("click", this.handleVideoOpen);
-    this.videoCloseButton.removeEventListener("click", this.handleVideoClose);
-    this.videoUrlForm.removeEventListener("submit", this.handleVideoLoad);
+    if (ENABLE_YOUTUBE) {
+      this.videoButton.removeEventListener("click", this.handleVideoOpen);
+      this.videoUrlForm.removeEventListener("submit", this.handleVideoLoad);
+    }
     this.fullscreenButton.removeEventListener("click", this.handleFullscreen);
     this.fullscreenGuideClose.removeEventListener("click", this.handleFullscreenGuideClose);
     document.removeEventListener("fullscreenchange", this.syncFullscreenState);
@@ -241,7 +383,7 @@ export class App {
     this.twoStepButton.dispose();
     this.jumpPointButton.dispose();
     this.cameraController.dispose();
-    this.youtubePlayer.dispose();
+    this.youtubePlayer?.dispose();
     this.timer.dispose();
     disposeScene(this.scene);
     this.renderer.dispose();
@@ -297,18 +439,111 @@ export class App {
   };
 
   private readonly handleVideoOpen = (): void => {
-    this.youtubePlayer.open();
-  };
-
-  private readonly handleVideoClose = (): void => {
-    this.youtubePlayer.close();
+    this.youtubePlayer?.toggle();
   };
 
   private readonly handleVideoLoad = (event: SubmitEvent): void => {
     event.preventDefault();
+    if (!this.youtubePlayer) return;
     const valid = this.youtubePlayer.load(this.videoUrlInput.value);
     this.videoUrlError.hidden = valid;
   };
+
+  private readonly handlePenlightPanelToggle = (): void => {
+    const open = this.penlightPanel.hasAttribute("hidden");
+    this.setPanelOpen("settings", false);
+    this.setPanelOpen("penlight", open);
+  };
+
+  private readonly handleSettingsPanelToggle = (): void => {
+    const open = this.settingsPanel.hasAttribute("hidden");
+    this.setPanelOpen("penlight", false);
+    this.setPanelOpen("settings", open);
+  };
+
+  private handleCheerPose(pose: Exclude<PenlightPose, "idle">): void {
+    if (!this.entered) return;
+    const next = this.player.togglePenlightPose(pose);
+    savePenlightState(this.player.penlight, window.localStorage);
+    this.syncPenlightChrome();
+    void next;
+  }
+
+  private readonly handleSettingsReset = (): void => {
+    const settings = resetGameSettings(window.localStorage);
+    this.player.setGameSettings(settings);
+    this.syncSettingsControls(settings);
+  };
+
+  private handleSettingInput(key: keyof GameSettings): void {
+    const input = requireElement<HTMLInputElement>(`setting-${key}`);
+    const next = {
+      ...this.player.gameSettings,
+      [key]: Number(input.value),
+    };
+    const saved = saveGameSettings(next, window.localStorage);
+    this.player.setGameSettings(saved);
+    this.syncSettingsControls(saved);
+  }
+
+  private setPanelOpen(panel: "penlight" | "settings", open: boolean): void {
+    const root = panel === "penlight" ? this.penlightPanel : this.settingsPanel;
+    const button = panel === "penlight" ? this.penlightButton : this.settingsButton;
+    root.hidden = !open;
+    button.setAttribute("aria-pressed", String(open));
+    button.classList.toggle("is-active", open);
+  }
+
+  private buildPenlightColorGrid(): void {
+    this.penlightColorGrid.replaceChildren();
+    for (const color of PENLIGHT_COLORS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "penlight-swatch";
+      button.style.setProperty("--swatch", `#${color.hex.toString(16).padStart(6, "0")}`);
+      button.setAttribute("role", "option");
+      button.setAttribute("aria-label", color.label);
+      button.dataset.colorId = color.id;
+      button.addEventListener("click", () => {
+        handlePenlightColorSelect({
+          apply: () => this.player.setPenlightColor(color.id),
+          persist: () => {
+            savePenlightState(this.player.penlight, window.localStorage);
+          },
+          sync: () => this.syncPenlightChrome(),
+          // Dismiss after a color pick; pose toggles stay on the HUD.
+          dismiss: () => this.setPanelOpen("penlight", false),
+        });
+      });
+      this.penlightColorGrid.append(button);
+    }
+  }
+
+  private syncPenlightChrome(): void {
+    const { colorId, pose } = this.player.penlight;
+    this.raisePenlightButton.setAttribute("aria-pressed", String(pose === "raise"));
+    this.wiperPenlightButton.setAttribute("aria-pressed", String(pose === "wiper"));
+    this.beatPenlightButton.setAttribute("aria-pressed", String(pose === "beat"));
+    this.pointPenlightButton.setAttribute("aria-pressed", String(pose === "point"));
+    this.raisePenlightButton.classList.toggle("is-active", pose === "raise");
+    this.wiperPenlightButton.classList.toggle("is-active", pose === "wiper");
+    this.beatPenlightButton.classList.toggle("is-active", pose === "beat");
+    this.pointPenlightButton.classList.toggle("is-active", pose === "point");
+    this.penlightColorGrid.querySelectorAll<HTMLButtonElement>(".penlight-swatch").forEach((swatch) => {
+      const selected = swatch.dataset.colorId === colorId;
+      swatch.setAttribute("aria-selected", String(selected));
+      swatch.classList.toggle("is-selected", selected);
+    });
+  }
+
+  private syncSettingsControls(settings: GameSettings): void {
+    for (const key of Object.keys(DEFAULT_GAME_SETTINGS) as (keyof GameSettings)[]) {
+      const input = requireElement<HTMLInputElement>(`setting-${key}`);
+      const output = requireElement<HTMLOutputElement>(`setting-${key}-value`);
+      input.value = String(settings[key]);
+      output.value = `${settings[key].toFixed(2)}×`;
+    }
+  }
 
   private readonly handleFullscreen = async (): Promise<void> => {
     const presentation = this.getFullscreenPresentation();

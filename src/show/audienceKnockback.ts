@@ -20,6 +20,7 @@ export interface AudienceKnockbackState {
   phaseElapsed: number;
   bounced: boolean;
   readonly homeX: number;
+  readonly homeY: number;
   readonly homeZ: number;
   readonly limbPhases: readonly [number, number, number, number];
 }
@@ -28,12 +29,13 @@ export function createAudienceKnockbackState(
   index: number,
   homeX: number,
   homeZ: number,
+  homeY = 0,
 ): AudienceKnockbackState {
   const base = index * 0.37;
   return {
     phase: "home",
     x: homeX,
-    y: 0,
+    y: homeY,
     z: homeZ,
     vx: 0,
     vy: 0,
@@ -42,6 +44,7 @@ export function createAudienceKnockbackState(
     phaseElapsed: 0,
     bounced: false,
     homeX,
+    homeY,
     homeZ,
     limbPhases: [base, base + 0.91, base + 2.03, base + 3.17],
   };
@@ -86,6 +89,7 @@ export function stepAudienceKnockback(
   state: AudienceKnockbackState,
   dt: number,
   bounds: KnockbackBounds,
+  groundHeightAt: (x: number, z: number) => number = flatGround,
 ): void {
   if (state.phase === "home") return;
 
@@ -101,8 +105,9 @@ export function stepAudienceKnockback(
     state.vx *= damping;
     state.vz *= damping;
 
-    if (state.y <= 0) {
-      state.y = 0;
+    const groundY = groundHeightAt(state.x, state.z);
+    if (state.y <= groundY) {
+      state.y = groundY;
       if (!state.bounced && Math.abs(state.vy) > 1) {
         state.vy = -state.vy * 0.16;
         state.bounced = true;
@@ -130,7 +135,7 @@ export function stepAudienceKnockback(
   if ((state.phase === "airborne" || state.phase === "down") && state.elapsed >= 2) {
     state.phase = "getting-up";
     state.phaseElapsed = 0;
-    state.y = 0;
+    state.y = groundHeightAt(state.x, state.z);
     state.vx = 0;
     state.vy = 0;
     state.vz = 0;
@@ -144,7 +149,7 @@ export function stepAudienceKnockback(
     const step = 5.5 * dt;
     if (distance <= step || distance < 0.03) {
       state.x = state.homeX;
-      state.y = 0;
+      state.y = state.homeY;
       state.z = state.homeZ;
       state.phase = "home";
       state.elapsed = 0;
@@ -153,5 +158,11 @@ export function stepAudienceKnockback(
     }
     state.x += (dx / distance) * step;
     state.z += (dz / distance) * step;
+    const returnY = state.homeY + Math.abs(Math.sin(state.phaseElapsed * 8)) * 0.18;
+    state.y += (returnY - state.y) * Math.min(1, dt * 6);
   }
+}
+
+function flatGround(): number {
+  return 0;
 }

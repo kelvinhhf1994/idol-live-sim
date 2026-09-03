@@ -60,6 +60,20 @@ describe("audience knockback", () => {
     expect(tryHitAudience(state, "mosh", 0, -1, 0, -1)).toBe(true);
   });
 
+  it("returns exactly to an elevated home after landing on dynamic ground", () => {
+    const state = createAudienceKnockbackState(2, 0, -12, 0.75);
+    tryHitAudience(state, "lift", 0, 1, 0, 1);
+
+    for (let frame = 0; frame < 600 && state.phase !== "home"; frame += 1) {
+      stepAudienceKnockback(state, 1 / 60, bounds, (_x, z) => (z < -9.075 ? 0.75 : 0));
+    }
+
+    expect(state.phase).toBe("home");
+    expect(state.x).toBe(0);
+    expect(state.y).toBe(0.75);
+    expect(state.z).toBe(-12);
+  });
+
   it("cannot be hit again before returning home", () => {
     const state = createAudienceKnockbackState(0, 0, 0);
 

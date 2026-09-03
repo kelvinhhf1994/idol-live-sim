@@ -1,6 +1,12 @@
 import * as THREE from "three";
+import {
+  applyPersonPose,
+  createPersonPose,
+  resetPersonPose,
+} from "../animation/personPose";
 import type { VenueDefinition } from "../config/venue";
 import { moveCircleWithCollisions, type Aabb2 } from "../core/collision";
+import { groundHeightAt } from "../core/venueGround";
 import type { PersonRig } from "../scene/createCharacter";
 import { LiftController } from "./LiftController";
 import {
@@ -8,12 +14,32 @@ import {
   JumpPointAction,
   writeJumpPointPose,
 } from "./JumpPointAction";
-import { MoshAction } from "./MoshAction";
+import {
+  createMoshJointPose,
+  MoshAction,
+  writeMoshJointPose,
+} from "./MoshAction";
 import {
   createTwoStepPose,
+  getTwoStepMovementScale,
+  type TwoStepPose,
   TwoStepAction,
   writeTwoStepPose,
 } from "./TwoStepAction";
+import {
+  DEFAULT_GAME_SETTINGS,
+  normalizeGameSettings,
+  type GameSettings,
+} from "./gameSettings";
+import {
+  DEFAULT_PENLIGHT_STATE,
+  getDynamicArmPose,
+  getDynamicStickPose,
+  getPenlightColor,
+  normalizePenlightState,
+  type PenlightPose,
+  type PenlightState,
+} from "./penlight";
 
 export interface MovementInput {
   x: number;
@@ -28,6 +54,7 @@ export interface WorldMovement {
 export interface AudienceImpactSource {
   mode: "mosh" | "lift" | null;
   x: number;
+  y: number;
   z: number;
   movementX: number;
   movementZ: number;
@@ -41,7 +68,8 @@ export interface MoshPose {
 }
 
 export function getMoshPose(progress: number): MoshPose {
-  const leftArm = Math.PI / 2 - progress * Math.PI * 2;
+  // Continuous windmill: overhead (π) → forward (π/2) → under/back. Right arm leads by π.
+  const leftArm = Math.PI - progress * Math.PI * 2;
   return {
     leftArm,
     rightArm: leftArm + Math.PI,
@@ -74,6 +102,7 @@ export class PlayerController {
   readonly audienceImpact: AudienceImpactSource = {
     mode: null,
     x: 0,
+    y: 0,
     z: 0,
     movementX: 0,
     movementZ: 0,
@@ -82,14 +111,19 @@ export class PlayerController {
   };
   private yaw: number;
   private walkTime = 0;
-  private moshStepTime = 0;
   private verticalVelocity = 0;
   private grounded = true;
   private readonly mosh = new MoshAction();
+  private readonly moshJointPose = createMoshJointPose();
   private readonly twoStep = new TwoStepAction();
   private readonly twoStepPose = createTwoStepPose();
+  private readonly personPose = createPersonPose();
   private readonly jumpPoint = new JumpPointAction();
   private readonly jumpPointPose = createJumpPointPose();
+  private settings: GameSettings = { ...DEFAULT_GAME_SETTINGS };
+  private penlightState: PenlightState = { ...DEFAULT_PENLIGHT_STATE };
+  private wiperPhase = 0;
+  private beatPhase = 0;
 
   constructor(
     private readonly rig: PersonRig,
@@ -100,11 +134,13 @@ export class PlayerController {
     this.lift = new LiftController(venue.spawn.y, rig);
     this.position.set(venue.spawn.x, venue.spawn.y, venue.spawn.z);
     this.yaw = venue.spawn.yaw;
+    this.applyPenlightVisuals();
     this.syncTransform();
   }
 
   update(dt: number, input: MovementInput, cameraYaw: number, enabled: boolean): void {
     const wasGrounded = this.grounded;
+    const startingGroundHeight = this.groundHeight;
     const inputStrength = Math.min(1, Math.hypot(input.x, input.y));
     const isMoving = enabled && inputStrength > 0.08;
     this.audienceImpact.movementX = 0;
@@ -118,30 +154,51 @@ export class PlayerController {
       const collisionRadius = formationActive ? 0.92 : 0.34;
       const boundaryPadding = formationActive ? 0.92 : 0.35;
       const speedMultiplier =
-        this.twoStep.isActive || this.jumpPoint.isActive || this.jumpPoint.held
-        ? 1
+        this.twoStepAnimating
+        ? getTwoStepMovementScale(this.twoStep.progress) * this.settings.twoStepSpeed
+        : this.twoStep.isActive || this.jumpPoint.isActive || this.jumpPoint.held
+          ? this.settings.walkSpeed
         : formationActive
-          ? 2
+          ? this.settings.liftSpeed
           : this.mosh.isActive
-            ? 1.25
-            : 1;
+            ? this.settings.moshSpeed
+            : this.settings.walkSpeed;
       const distance = 3.2 * speedMultiplier * dt * inputStrength;
       const next = moveCircleWithCollisions(
         this.position,
         { x: movement.x * distance, z: movement.z * distance },
         collisionRadius,
         this.colliders,
+        formationActive ? startingGroundHeight : this.position.y,
       );
-      this.position.x = THREE.MathUtils.clamp(
+      const nextX = THREE.MathUtils.clamp(
         next.x,
         this.venue.bounds.minX + boundaryPadding,
         this.venue.bounds.maxX - boundaryPadding,
       );
-      this.position.z = THREE.MathUtils.clamp(
+      const nextZ = THREE.MathUtils.clamp(
         next.z,
         this.venue.bounds.minZ + boundaryPadding,
         this.venue.bounds.maxZ - boundaryPadding,
       );
+      const nextGroundHeight = groundHeightAt(this.venue, nextX, nextZ);
+      if (
+        (this.grounded || formationActive) &&
+        Math.abs(nextGroundHeight - startingGroundHeight) > 0.001
+      ) {
+        this.audienceImpact.movementX = 0;
+        this.audienceImpact.movementZ = 0;
+      } else if (
+        !this.grounded &&
+        nextGroundHeight > startingGroundHeight &&
+        this.position.y < nextGroundHeight
+      ) {
+        this.audienceImpact.movementX = 0;
+        this.audienceImpact.movementZ = 0;
+      } else {
+        this.position.x = nextX;
+        this.position.z = nextZ;
+      }
       const targetYaw = Math.atan2(-movement.x, -movement.z);
       this.yaw = dampAngle(this.yaw, targetYaw, 1 - Math.exp(-dt * 15));
       this.walkTime += dt * 9;
@@ -149,16 +206,24 @@ export class PlayerController {
 
     if (this.lift.isSupporting) {
       this.verticalVelocity = 0;
-      this.lift.update(dt, this.position, this.yaw, isMoving);
+      this.lift.update(dt, this.position, this.yaw, isMoving, this.groundHeight);
       if (!this.lift.isSupporting) this.grounded = true;
     } else if (!this.grounded) {
+      const previousY = this.position.y;
       this.verticalVelocity -= 14 * dt;
       this.position.y += this.verticalVelocity * dt;
-      if (this.position.y <= this.venue.spawn.y) {
-        this.position.y = this.venue.spawn.y;
+      const landingHeight = this.groundHeight;
+      if (
+        this.verticalVelocity <= 0 &&
+        previousY >= landingHeight &&
+        this.position.y <= landingHeight
+      ) {
+        this.position.y = landingHeight;
         this.verticalVelocity = 0;
         this.grounded = true;
       }
+    } else {
+      this.position.y = this.groundHeight;
     }
 
     if (!wasGrounded && this.grounded) this.jumpPoint.onLanded();
@@ -175,6 +240,7 @@ export class PlayerController {
         ? "mosh"
         : null;
     this.audienceImpact.x = this.position.x;
+    this.audienceImpact.y = this.position.y;
     this.audienceImpact.z = this.position.z;
     this.audienceImpact.forwardX = -Math.sin(this.yaw);
     this.audienceImpact.forwardZ = -Math.cos(this.yaw);
@@ -187,13 +253,69 @@ export class PlayerController {
 
   private beginJump(): boolean {
     if (!this.grounded || this.lift.isSupporting) return false;
-    this.verticalVelocity = 5.2;
+    this.verticalVelocity = 6.8 * this.settings.jumpScale;
     this.grounded = false;
     return true;
   }
 
   get moshActive(): boolean {
     return this.mosh.isActive;
+  }
+
+  get moshHeld(): boolean {
+    return this.mosh.isHeld;
+  }
+
+  get moshWindmillTurns(): number {
+    return this.mosh.windmillTurns;
+  }
+
+  get gameSettings(): Readonly<GameSettings> {
+    return this.settings;
+  }
+
+  setGameSettings(settings: GameSettings): void {
+    this.settings = normalizeGameSettings(settings);
+  }
+
+  get penlight(): Readonly<PenlightState> {
+    return this.penlightState;
+  }
+
+  setPenlightState(state: PenlightState): void {
+    this.penlightState = normalizePenlightState(state);
+    this.applyPenlightVisuals();
+  }
+
+  setPenlightColor(colorId: string): void {
+    this.setPenlightState({ ...this.penlightState, colorId });
+  }
+
+  /** Toggle cheer pose; passing the active pose clears it back to idle. */
+  togglePenlightPose(pose: Exclude<PenlightPose, "idle">): PenlightPose {
+    const next = this.penlightState.pose === pose ? "idle" : pose;
+    this.setPenlightState({ ...this.penlightState, pose: next });
+    return next;
+  }
+
+  private get penlightAnimPhase(): number {
+    if (this.penlightState.pose === "wiper") return this.wiperPhase;
+    if (this.penlightState.pose === "beat") return this.beatPhase;
+    return 0;
+  }
+
+  get penlightPoseActive(): boolean {
+    return this.penlightState.pose !== "idle" && !this.penlightSuppressed;
+  }
+
+  private get penlightSuppressed(): boolean {
+    return (
+      this.mosh.isActive ||
+      this.twoStep.isActive ||
+      this.lift.isSupporting ||
+      this.jumpPoint.isActive ||
+      this.jumpPoint.held
+    );
   }
 
   get liftActive(): boolean {
@@ -206,6 +328,14 @@ export class PlayerController {
 
   get twoStepAnimating(): boolean {
     return this.twoStep.isActive && this.grounded && !this.lift.isSupporting;
+  }
+
+  get twoStepPhase(): number {
+    return this.twoStep.progress;
+  }
+
+  get twoStepPoseState(): Readonly<TwoStepPose> {
+    return this.twoStepPose;
   }
 
   get jumpPointActive(): boolean {
@@ -222,6 +352,10 @@ export class PlayerController {
 
   get supporterPositions(): readonly THREE.Vector3[] {
     return this.lift.supporterPositions;
+  }
+
+  get groundHeight(): number {
+    return groundHeightAt(this.venue, this.position.x, this.position.z);
   }
 
   setLiftActive(active: boolean): void {
@@ -274,9 +408,34 @@ export class PlayerController {
     this.group.visible = visible;
   }
 
+  debugPlaceOnGround(x: number, z: number): void {
+    this.position.x = x;
+    this.position.z = z;
+    this.position.y = this.groundHeight;
+    this.verticalVelocity = 0;
+    this.grounded = true;
+    this.syncTransform();
+  }
+
+  debugSetTwoStepPhase(progress: number): void {
+    this.twoStep.debugSetProgress(progress);
+  }
+
+  debugSetMoshPhase(progress: number): void {
+    this.twoStep.release();
+    this.jumpPoint.cancel();
+    this.mosh.debugSetProgress(progress);
+  }
+
   private animate(isMoving: boolean, dt: number): void {
+    if (this.penlightState.pose === "wiper") {
+      this.wiperPhase += dt * Math.PI * 2 * (1.0 * this.settings.wiperSpeed);
+    } else if (this.penlightState.pose === "beat") {
+      this.beatPhase += dt * (2.0 * this.settings.beatSpeed);
+    }
+    if (this.penlightPoseActive) this.applyPenlightStickTransform();
+
     const walkSwing = isMoving ? Math.sin(this.walkTime) * 0.55 : 0;
-    const moshPose = getMoshPose(this.mosh.progress);
     const moshActive = this.mosh.isActive && !this.lift.isSupporting;
     const twoStepActive = this.twoStepAnimating;
     const jumpPointPointing = this.jumpPoint.isPointing && !this.grounded;
@@ -290,101 +449,200 @@ export class PlayerController {
         this.jumpPointPose,
       );
     }
-    if (moshActive) this.moshStepTime += dt * 22;
-    const legSwing = moshActive ? Math.sin(this.moshStepTime) * 0.58 : walkSwing;
-    const leftLegTarget = jumpPointPoseActive
-      ? this.jumpPointPose.legX
-      : twoStepActive
-        ? this.twoStepPose.leftLegX
-        : legSwing;
-    const rightLegTarget = jumpPointPoseActive
-      ? this.jumpPointPose.legX
-      : twoStepActive
-        ? this.twoStepPose.rightLegX
-        : -legSwing;
-    const leftArmTarget = jumpPointPoseActive
-      ? this.jumpPointPose.leftArmX
-      : moshActive
-      ? moshPose.leftArm
-      : twoStepActive
-        ? this.twoStepPose.leftArmX
-        : -walkSwing * 0.65;
-    const rightArmTarget = jumpPointPoseActive
-      ? this.jumpPointPose.rightArmX
-      : moshActive
-      ? moshPose.rightArm
-      : twoStepActive
-        ? this.twoStepPose.rightArmX
-        : walkSwing * 0.65;
     const blend = 1 - Math.exp(-dt * 18);
-    this.rig.leftLeg.rotation.x = THREE.MathUtils.lerp(
-      this.rig.leftLeg.rotation.x,
-      leftLegTarget,
+    if (twoStepActive) {
+      this.applyTwoStepPose(blend);
+      return;
+    }
+    this.clearV2TwoStepChannels(blend);
+    if (jumpPointPoseActive) {
+      this.applyJumpPointPose(blend);
+      return;
+    }
+    if (!this.grounded && !this.lift.isSupporting) {
+      this.applyAirbornePose(blend);
+      if (!moshActive) return;
+    }
+    if (moshActive) {
+      writeMoshJointPose(this.mosh.windmillTurns, this.moshJointPose);
+      this.applyMoshPose(blend);
+      return;
+    }
+    if (!moshActive && !jumpPointPoseActive && this.grounded) {
+      this.applyWalkPose(walkSwing, isMoving, blend);
+      return;
+    }
+  }
+
+  private applyPenlightStickTransform(): void {
+    const stick = this.rig.glowStick;
+    if (!stick) return;
+    const stickPose = getDynamicStickPose(this.penlightState.pose, this.penlightAnimPhase);
+    stick.position.set(stickPose.position.x, stickPose.position.y, stickPose.position.z);
+    stick.rotation.set(stickPose.rotation.x, stickPose.rotation.y, stickPose.rotation.z);
+  }
+
+  private applyPenlightVisuals(): void {
+    const stick = this.rig.glowStick;
+    if (!stick) return;
+    const color = getPenlightColor(this.penlightState.colorId);
+    const material = stick.material;
+    if (material instanceof THREE.MeshStandardMaterial) {
+      material.color.setHex(color.hex);
+      material.emissive.setHex(color.hex);
+      material.emissiveIntensity = 2.35;
+      material.needsUpdate = true;
+    }
+    this.applyPenlightStickTransform();
+  }
+
+  private overlayPenlightArm(target: ReturnType<typeof createPersonPose>): void {
+    if (!this.penlightPoseActive) return;
+    const arm = getDynamicArmPose(this.penlightState.pose, this.penlightAnimPhase);
+    if (!arm) return;
+    target.rightShoulderX = arm.rightShoulderX;
+    target.rightShoulderY = arm.rightShoulderY;
+    target.rightShoulderZ = arm.rightShoulderZ;
+    target.rightElbow = arm.rightElbow;
+  }
+
+  private applyTwoStepPose(blend: number): void {
+    const source = this.twoStepPose;
+    const target = this.personPose;
+    resetPersonPose(target);
+    target.bodyY = source.bodyY;
+    target.pelvisY = source.pelvisY;
+    target.pelvisTwist = source.bodyYaw;
+    target.pelvisZ = source.bodyZ;
+    target.chestX = source.chestX;
+    target.leftShoulderX = source.leftArmX;
+    target.rightShoulderX = source.rightArmX;
+    target.leftElbow = source.leftElbow;
+    target.rightElbow = source.rightElbow;
+    target.leftHipX = source.leftLegX;
+    target.rightHipX = source.rightLegX;
+    target.leftHipZ = source.leftLegZ;
+    target.rightHipZ = source.rightLegZ;
+    target.leftKnee = source.leftKnee;
+    target.rightKnee = source.rightKnee;
+    target.leftAnkleX = source.leftAnkleX;
+    target.rightAnkleX = source.rightAnkleX;
+    target.leftAnkleZ = source.leftAnkleZ;
+    target.rightAnkleZ = source.rightAnkleZ;
+    applyPersonPose(this.rig, target, blend);
+  }
+
+  private applyWalkPose(walkSwing: number, moving: boolean, blend: number): void {
+    const target = this.personPose;
+    resetPersonPose(target);
+    if (moving) {
+      const phase = Math.sin(this.walkTime);
+      target.bodyY = Math.abs(phase) * 0.035;
+      target.pelvisTwist = phase * -0.08;
+      target.chestX = -0.035;
+      target.chestY = phase * 0.06;
+      target.leftHipX = walkSwing;
+      target.rightHipX = -walkSwing;
+      target.leftKnee = 0.1 + Math.max(0, phase) * 0.45;
+      target.rightKnee = 0.1 + Math.max(0, -phase) * 0.45;
+      target.leftAnkleX = target.leftKnee - target.leftHipX;
+      target.rightAnkleX = target.rightKnee - target.rightHipX;
+      target.leftShoulderX = -walkSwing * 0.65;
+      target.rightShoulderX = walkSwing * 0.65;
+      target.leftElbow = 0.18 + Math.max(0, -phase) * 0.16;
+      target.rightElbow = 0.18 + Math.max(0, phase) * 0.16;
+    }
+    this.overlayPenlightArm(target);
+    applyPersonPose(this.rig, target, blend);
+  }
+
+  private applyAirbornePose(blend: number): void {
+    const target = this.personPose;
+    resetPersonPose(target);
+    const kneeFlexion = this.verticalVelocity > 0 ? 0.42 : 0.55;
+    target.leftHipX = kneeFlexion * 0.5;
+    target.rightHipX = kneeFlexion * 0.5;
+    target.leftKnee = kneeFlexion;
+    target.rightKnee = kneeFlexion;
+    target.leftAnkleX = kneeFlexion * 0.5;
+    target.rightAnkleX = kneeFlexion * 0.5;
+    this.overlayPenlightArm(target);
+    applyPersonPose(this.rig, target, blend);
+  }
+
+  private applyJumpPointPose(blend: number): void {
+    const source = this.jumpPointPose;
+    const target = this.personPose;
+    resetPersonPose(target);
+    target.bodyY = source.bodyY;
+    target.pelvisY = source.pelvisY;
+    target.chestX = source.chestX;
+    target.leftShoulderX = source.leftArmX;
+    target.rightShoulderX = source.rightArmX;
+    target.leftElbow = source.leftElbow;
+    target.rightElbow = source.rightElbow;
+    target.leftHipX = source.legX;
+    target.rightHipX = source.legX;
+    target.leftKnee = source.leftKnee;
+    target.rightKnee = source.rightKnee;
+    target.leftAnkleX = source.leftAnkleX;
+    target.rightAnkleX = source.rightAnkleX;
+    applyPersonPose(this.rig, target, blend);
+  }
+
+  private applyMoshPose(blend: number): void {
+    const source = this.moshJointPose;
+    const target = this.personPose;
+    const step = Math.sin(this.mosh.progress * Math.PI * 2);
+    resetPersonPose(target);
+    target.bodyY = Math.abs(Math.sin(this.mosh.progress * Math.PI * 4)) * 0.025;
+    target.chestX = -THREE.MathUtils.degToRad(15);
+    target.leftShoulderX = source.leftShoulderX;
+    target.rightShoulderX = source.rightShoulderX;
+    target.leftShoulderZ = source.leftShoulderZ;
+    target.rightShoulderZ = source.rightShoulderZ;
+    target.leftElbow = source.leftElbow;
+    target.rightElbow = source.rightElbow;
+    target.leftHipX = step * 0.58;
+    target.rightHipX = -step * 0.58;
+    target.leftKnee = 0.1 + Math.max(0, step) * 0.24;
+    target.rightKnee = 0.1 + Math.max(0, -step) * 0.24;
+    target.leftAnkleX = target.leftKnee - target.leftHipX;
+    target.rightAnkleX = target.rightKnee - target.rightHipX;
+    applyPersonPose(this.rig, target, blend);
+  }
+
+  private clearV2TwoStepChannels(blend: number): void {
+    this.rig.pelvis.position.y = THREE.MathUtils.lerp(
+      this.rig.pelvis.position.y,
+      0.64,
       blend,
     );
-    this.rig.rightLeg.rotation.x = THREE.MathUtils.lerp(
-      this.rig.rightLeg.rotation.x,
-      rightLegTarget,
+    this.rig.pelvis.rotation.x = THREE.MathUtils.lerp(this.rig.pelvis.rotation.x, 0, blend);
+    this.rig.pelvis.rotation.y = THREE.MathUtils.lerp(this.rig.pelvis.rotation.y, 0, blend);
+    this.rig.pelvis.rotation.z = THREE.MathUtils.lerp(this.rig.pelvis.rotation.z, 0, blend);
+    this.rig.chest.rotation.x = THREE.MathUtils.lerp(this.rig.chest.rotation.x, 0, blend);
+    this.rig.chest.rotation.y = THREE.MathUtils.lerp(this.rig.chest.rotation.y, 0, blend);
+    this.rig.chest.rotation.z = THREE.MathUtils.lerp(this.rig.chest.rotation.z, 0, blend);
+    this.rig.leftKnee.rotation.x = THREE.MathUtils.lerp(this.rig.leftKnee.rotation.x, 0, blend);
+    this.rig.rightKnee.rotation.x = THREE.MathUtils.lerp(this.rig.rightKnee.rotation.x, 0, blend);
+    this.rig.leftFootPivot.rotation.x = THREE.MathUtils.lerp(
+      this.rig.leftFootPivot.rotation.x,
+      0,
       blend,
     );
-    this.rig.leftLeg.rotation.z = THREE.MathUtils.lerp(
-      this.rig.leftLeg.rotation.z,
-      twoStepActive ? this.twoStepPose.leftLegZ : 0,
+    this.rig.leftFootPivot.rotation.z = THREE.MathUtils.lerp(
+      this.rig.leftFootPivot.rotation.z,
+      0,
       blend,
     );
-    this.rig.rightLeg.rotation.z = THREE.MathUtils.lerp(
-      this.rig.rightLeg.rotation.z,
-      twoStepActive ? this.twoStepPose.rightLegZ : 0,
+    this.rig.rightFootPivot.rotation.x = THREE.MathUtils.lerp(
+      this.rig.rightFootPivot.rotation.x,
+      0,
       blend,
     );
-    this.rig.leftArm.rotation.x = dampAngle(this.rig.leftArm.rotation.x, leftArmTarget, blend);
-    this.rig.rightArm.rotation.x = dampAngle(this.rig.rightArm.rotation.x, rightArmTarget, blend);
-    this.rig.leftArm.rotation.z = THREE.MathUtils.lerp(
-      this.rig.leftArm.rotation.z,
-      0.12,
-      blend,
-    );
-    this.rig.rightArm.rotation.z = THREE.MathUtils.lerp(
-      this.rig.rightArm.rotation.z,
-      -0.12,
-      blend,
-    );
-    this.rig.leftForearm.rotation.x = THREE.MathUtils.lerp(
-      this.rig.leftForearm.rotation.x,
-      moshActive ? 0.34 : 0,
-      blend,
-    );
-    this.rig.rightForearm.rotation.x = THREE.MathUtils.lerp(
-      this.rig.rightForearm.rotation.x,
-      moshActive ? 0.34 : 0,
-      blend,
-    );
-    const bob = moshActive
-      ? Math.abs(Math.sin(this.moshStepTime * 2)) * 0.025
-      : jumpPointPoseActive
-        ? this.jumpPointPose.bodyY
-      : twoStepActive
-        ? this.twoStepPose.bodyY
-      : isMoving
-        ? Math.abs(Math.sin(this.walkTime)) * 0.035
-        : 0;
-    this.rig.body.position.y = THREE.MathUtils.lerp(this.rig.body.position.y, bob, blend);
-    this.rig.body.rotation.x = THREE.MathUtils.lerp(
-      this.rig.body.rotation.x,
-      jumpPointPoseActive
-        ? this.jumpPointPose.bodyX
-        : moshActive
-          ? -THREE.MathUtils.degToRad(15)
-          : 0,
-      blend,
-    );
-    this.rig.body.rotation.z = THREE.MathUtils.lerp(
-      this.rig.body.rotation.z,
-      twoStepActive ? this.twoStepPose.bodyZ : 0,
-      blend,
-    );
-    this.rig.head.rotation.x = THREE.MathUtils.lerp(
-      this.rig.head.rotation.x,
+    this.rig.rightFootPivot.rotation.z = THREE.MathUtils.lerp(
+      this.rig.rightFootPivot.rotation.z,
       0,
       blend,
     );

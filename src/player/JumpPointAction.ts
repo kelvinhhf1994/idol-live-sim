@@ -8,6 +8,14 @@ export interface JumpPointPose {
   bodyX: number;
   bodyY: number;
   legX: number;
+  leftKnee: number;
+  rightKnee: number;
+  leftAnkleX: number;
+  rightAnkleX: number;
+  leftElbow: number;
+  rightElbow: number;
+  pelvisY: number;
+  chestX: number;
 }
 
 export function createJumpPointPose(): JumpPointPose {
@@ -17,6 +25,14 @@ export function createJumpPointPose(): JumpPointPose {
     bodyX: 0,
     bodyY: 0,
     legX: 0,
+    leftKnee: 0,
+    rightKnee: 0,
+    leftAnkleX: 0,
+    rightAnkleX: 0,
+    leftElbow: 0,
+    rightElbow: 0,
+    pelvisY: 0,
+    chestX: 0,
   };
 }
 
@@ -28,9 +44,17 @@ export function writeJumpPointPose(
   if (landing) {
     pose.rightArmX = 0.3;
     pose.leftArmX = 0;
-    pose.bodyX = -0.05;
+    pose.bodyX = 0;
     pose.bodyY = -0.1;
-    pose.legX = -0.34;
+    pose.legX = 0.4;
+    pose.leftKnee = 0.8;
+    pose.rightKnee = 0.8;
+    pose.leftAnkleX = 0.4;
+    pose.rightAnkleX = 0.4;
+    pose.leftElbow = 0.25;
+    pose.rightElbow = 0.35;
+    pose.pelvisY = -0.02;
+    pose.chestX = -0.05;
     return;
   }
 
@@ -38,9 +62,17 @@ export function writeJumpPointPose(
   const eased = 1 - (1 - progress) ** 3;
   pose.rightArmX = 2.2 * eased;
   pose.leftArmX = -0.72 * eased;
-  pose.bodyX = 0.1 * eased;
   pose.bodyY = 0.025 * eased;
-  pose.legX = 0;
+  pose.legX = 0.19 * eased;
+  pose.leftKnee = 0.38 * eased;
+  pose.rightKnee = 0.38 * eased;
+  pose.leftAnkleX = 0.19 * eased;
+  pose.rightAnkleX = 0.19 * eased;
+  pose.leftElbow = 0.45 * eased;
+  pose.rightElbow = 0.28 * eased;
+  pose.pelvisY = 0;
+  pose.chestX = 0.1 * eased;
+  pose.bodyX = 0;
 }
 
 export class JumpPointAction {

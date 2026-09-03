@@ -12,6 +12,8 @@ export class MoshButton {
     root.addEventListener("pointerup", this.handlePointerEnd);
     root.addEventListener("pointercancel", this.handlePointerEnd);
     root.addEventListener("lostpointercapture", this.handleLostCapture);
+    // Long-press context menus cancel the pointer on some mobile browsers.
+    root.addEventListener("contextmenu", this.handleContextMenu);
     window.addEventListener("blur", this.release);
     document.addEventListener("visibilitychange", this.handleVisibility);
   }
@@ -21,6 +23,7 @@ export class MoshButton {
     this.root.removeEventListener("pointerup", this.handlePointerEnd);
     this.root.removeEventListener("pointercancel", this.handlePointerEnd);
     this.root.removeEventListener("lostpointercapture", this.handleLostCapture);
+    this.root.removeEventListener("contextmenu", this.handleContextMenu);
     window.removeEventListener("blur", this.release);
     document.removeEventListener("visibilitychange", this.handleVisibility);
     this.release();
@@ -72,6 +75,10 @@ export class MoshButton {
 
   private readonly handleVisibility = (): void => {
     if (document.hidden) this.release();
+  };
+
+  private readonly handleContextMenu = (event: Event): void => {
+    event.preventDefault();
   };
 
   private readonly release = (): void => {

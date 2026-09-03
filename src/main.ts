@@ -18,6 +18,12 @@ try {
     window.__liveHouseDebug = {
       snapshot: () => app.getSnapshot(),
       triggerAudienceKnockback: (mode) => app.triggerAudienceKnockback(mode),
+      triggerPerformerKnockback: (mode) => app.triggerPerformerKnockback(mode),
+      placePlayer: (x, z) => app.debugPlacePlayer(x, z),
+      setTwoStepPhase: (progress) => app.debugSetTwoStepPhase(progress),
+      setMoshPhase: (progress) => app.debugSetMoshPhase(progress),
+      setCameraYaw: (yaw) => app.debugSetCameraYaw(yaw),
+      setCameraView: (yaw, pitch) => app.debugSetCameraView(yaw, pitch),
     };
   }
   app.start();

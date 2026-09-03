@@ -41,6 +41,11 @@ export class CameraController {
     return this.mode;
   }
 
+  debugSetView(yaw: number, pitch: number): void {
+    this.yaw = yaw;
+    this.pitch = THREE.MathUtils.clamp(pitch, -0.7, 0.55);
+  }
+
   update(dt: number, playerPosition: THREE.Vector3): void {
     if (this.mode === "first") {
       this.updateFirstPerson(dt, playerPosition);
@@ -76,22 +81,26 @@ export class CameraController {
       playerPosition.y + targetHeight + Math.sin(this.pitch) * 1.5,
       playerPosition.z,
     );
-    const distance = resolveCameraDistance(this.lookTarget, this.yaw, formationVisible ? 5.1 : 4.2, this.colliders);
+    const desiredDistance = formationVisible ? 5.1 : 4.2;
     this.desiredPosition.set(
-      this.lookTarget.x + Math.sin(this.yaw) * distance,
+      this.lookTarget.x + Math.sin(this.yaw) * desiredDistance,
       playerPosition.y + 2.3,
-      this.lookTarget.z + Math.cos(this.yaw) * distance,
+      this.lookTarget.z + Math.cos(this.yaw) * desiredDistance,
     );
-    this.desiredPosition.x = THREE.MathUtils.clamp(
-      this.desiredPosition.x,
-      this.venue.cameraBounds.minX,
-      this.venue.cameraBounds.maxX,
+    clampCameraDestination(this.desiredPosition, this.venue.cameraBounds);
+    const fullDistance = this.lookTarget.distanceTo(this.desiredPosition);
+    const safeDistance = resolveCameraDistance(
+      this.lookTarget,
+      this.desiredPosition,
+      this.colliders,
     );
-    this.desiredPosition.z = THREE.MathUtils.clamp(
-      this.desiredPosition.z,
-      this.venue.cameraBounds.minZ,
-      this.venue.cameraBounds.maxZ,
-    );
+    if (safeDistance < fullDistance) {
+      this.desiredPosition.lerpVectors(
+        this.lookTarget,
+        this.desiredPosition,
+        safeDistance / fullDistance,
+      );
+    }
     this.camera.position.lerp(this.desiredPosition, 1 - Math.exp(-dt * 12));
     this.camera.lookAt(this.lookTarget);
   }
@@ -137,24 +146,35 @@ export class CameraController {
 
 export function resolveCameraDistance(
   target: THREE.Vector3,
-  yaw: number,
-  desiredDistance: number,
+  desired: THREE.Vector3,
   colliders: readonly Aabb2[],
 ): number {
-  for (let step = 1; step <= 12; step += 1) {
-    const distance = (desiredDistance * step) / 12;
-    const point = {
-      x: target.x + Math.sin(yaw) * distance,
-      z: target.z + Math.cos(yaw) * distance,
-    };
+  const sampleCount = 24;
+  const desiredDistance = target.distanceTo(desired);
+  for (let step = 1; step <= sampleCount; step += 1) {
+    const progress = step / sampleCount;
+    const x = target.x + (desired.x - target.x) * progress;
+    const y = target.y + (desired.y - target.y) * progress;
+    const z = target.z + (desired.z - target.z) * progress;
     const blocked = colliders.some(
       (collider) =>
-        point.x > collider.minX - 0.2 &&
-        point.x < collider.maxX + 0.2 &&
-        point.z > collider.minZ - 0.2 &&
-        point.z < collider.maxZ + 0.2,
+        x > collider.minX - 0.2 &&
+        x < collider.maxX + 0.2 &&
+        z > collider.minZ - 0.2 &&
+        z < collider.maxZ + 0.2 &&
+        (collider.maxY === undefined || y < collider.maxY + 0.2),
     );
-    if (blocked) return Math.max(0.15, distance - desiredDistance / 12);
+    if (blocked) {
+      return Math.max(0.15, (desiredDistance * (step - 1)) / sampleCount);
+    }
   }
   return desiredDistance;
+}
+
+export function clampCameraDestination(
+  destination: THREE.Vector3,
+  bounds: VenueDefinition["cameraBounds"],
+): void {
+  destination.x = THREE.MathUtils.clamp(destination.x, bounds.minX, bounds.maxX);
+  destination.z = THREE.MathUtils.clamp(destination.z, bounds.minZ, bounds.maxZ);
 }

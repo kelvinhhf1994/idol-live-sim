@@ -50,10 +50,10 @@ describe("player lift", () => {
     const rightFoot = rig.rightFoot.getWorldPosition(new THREE.Vector3());
     const [leftSupporter, rightSupporter] = player.lift.supporters;
 
-    expect(leftSupporter.leftHand.getWorldPosition(new THREE.Vector3()).distanceTo(leftFoot)).toBeLessThan(0.14);
-    expect(leftSupporter.rightHand.getWorldPosition(new THREE.Vector3()).distanceTo(leftFoot)).toBeLessThan(0.14);
-    expect(rightSupporter.leftHand.getWorldPosition(new THREE.Vector3()).distanceTo(rightFoot)).toBeLessThan(0.14);
-    expect(rightSupporter.rightHand.getWorldPosition(new THREE.Vector3()).distanceTo(rightFoot)).toBeLessThan(0.14);
+    expect(leftSupporter.leftHand.getWorldPosition(new THREE.Vector3()).distanceTo(leftFoot)).toBeLessThan(0.08);
+    expect(leftSupporter.rightHand.getWorldPosition(new THREE.Vector3()).distanceTo(leftFoot)).toBeLessThan(0.08);
+    expect(rightSupporter.leftHand.getWorldPosition(new THREE.Vector3()).distanceTo(rightFoot)).toBeLessThan(0.08);
+    expect(rightSupporter.rightHand.getWorldPosition(new THREE.Vector3()).distanceTo(rightFoot)).toBeLessThan(0.08);
   });
 
   it("rejects jumping while lift is active", () => {
@@ -62,6 +62,21 @@ describe("player lift", () => {
     player.setLiftActive(true);
 
     expect(player.jump()).toBe(false);
+  });
+
+  it("activates lift from the stage without sinking supporters into it", () => {
+    const player = createPlayer();
+    player.position.set(0, 0.75, -12.2);
+    player.update(0, { x: 0, y: 0 }, 0, true);
+
+    player.setLiftActive(true);
+    updateFrames(player);
+
+    expect(player.jump()).toBe(false);
+    expect(player.position.y).toBeCloseTo(1.9, 2);
+    player.supporterPositions.forEach((position) => {
+      expect(position.y).toBeCloseTo(0.75, 2);
+    });
   });
 
   it("cancels an active mosh when lift starts", () => {
@@ -123,7 +138,7 @@ describe("player lift", () => {
     expect(player.position.z).toBe(GENERIC_VENUE.spawn.z);
   });
 
-  it("keeps the lifted player upright with fixed legs while moving", () => {
+  it("keeps the lifted player upright with rigid soft-kneed legs while moving", () => {
     const rig = createLowPolyPerson();
     const player = new PlayerController(rig, GENERIC_VENUE, []);
     player.setLiftActive(true);
@@ -132,10 +147,34 @@ describe("player lift", () => {
     player.update(0.1, { x: 0, y: -1 }, 0, true);
 
     expect(rig.body.rotation.x).toBeCloseTo(0);
-    expect(rig.leftLeg.rotation.x).toBeCloseTo(0);
-    expect(rig.rightLeg.rotation.x).toBeCloseTo(0);
-    expect(rig.leftArm.rotation.x).toBeGreaterThan(1.3);
-    expect(Math.abs(rig.rightArm.rotation.z)).toBeGreaterThan(1);
+    expect(rig.leftLeg.rotation.x).toBeCloseTo(0.15);
+    expect(rig.rightLeg.rotation.x).toBeCloseTo(0.15);
+    expect(rig.leftKnee.rotation.x).toBeCloseTo(-0.3);
+    expect(rig.rightKnee.rotation.x).toBeCloseTo(-0.3);
+    expect(rig.leftFootPivot.rotation.x).toBeCloseTo(0.15);
+    expect(rig.rightFootPivot.rotation.x).toBeCloseTo(0.15);
+    // Swapped roles: left abducts to the side, right points forward-up.
+    expect(Math.abs(rig.leftArm.rotation.z)).toBeGreaterThan(1);
+    expect(rig.leftArm.rotation.z).toBeCloseTo(-1.35, 5);
+    expect(rig.rightArm.rotation.x).toBeGreaterThan(1.3);
+    expect(rig.rightArm.rotation.x).toBeCloseTo(Math.PI / 2, 5);
+    expect(rig.rightArm.rotation.z).toBeCloseTo(-0.12, 5);
+  });
+
+  it("swaps lifted-player arm roles relative to the prior left-forward pose", () => {
+    const rig = createLowPolyPerson();
+    const player = new PlayerController(rig, GENERIC_VENUE, []);
+    player.setLiftActive(true);
+    updateFrames(player);
+
+    // Previously left was forward (π/2) and right was side (+1.35); now mirrored-swapped.
+    expect(rig.leftArm.rotation.x).toBeCloseTo(0.12, 5);
+    expect(rig.leftArm.rotation.z).toBeCloseTo(-1.35, 5);
+    expect(rig.rightArm.rotation.x).toBeCloseTo(Math.PI / 2, 5);
+    expect(rig.rightArm.rotation.y).toBeCloseTo(0, 5);
+    expect(rig.rightArm.rotation.z).toBeCloseTo(-0.12, 5);
+    expect(rig.leftForearm.rotation.x).toBeCloseTo(0, 5);
+    expect(rig.rightForearm.rotation.x).toBeCloseTo(0, 5);
   });
 
   it("keeps supporter arms fixed while their legs run", () => {
@@ -143,35 +182,37 @@ describe("player lift", () => {
     const player = new PlayerController(playerRig, GENERIC_VENUE, []);
     player.setLiftActive(true);
     updateFrames(player);
-    const initialArms = player.lift.supporters.map((rig) => [
-      rig.leftArm.rotation.x,
-      rig.leftArm.rotation.z,
-      rig.rightArm.rotation.x,
-      rig.rightArm.rotation.z,
-    ]);
-
     player.update(0.1, { x: 0, y: -1 }, 0, true);
 
-    player.lift.supporters.forEach((rig, index) => {
-      expect([
-        rig.leftArm.rotation.x,
-        rig.leftArm.rotation.z,
-        rig.rightArm.rotation.x,
-        rig.rightArm.rotation.z,
-      ]).toEqual(initialArms[index]);
+    player.lift.supporters.forEach((rig) => {
       expect(Math.abs(rig.leftLeg.rotation.x)).toBeGreaterThan(0.3);
       expect(rig.rightLeg.rotation.x).toBeCloseTo(-rig.leftLeg.rotation.x);
-      expect(rig.body.rotation.x).toBeLessThan(-0.05);
+      expect(rig.leftKnee.rotation.x).toBeLessThan(-0.15);
+      expect(rig.rightKnee.rotation.x).toBeLessThan(-0.05);
+      expect(Math.abs(rig.leftFootPivot.rotation.x)).toBeGreaterThan(0.08);
+      expect(rig.body.rotation.x).toBeCloseTo(0);
+      expect(rig.chest.rotation.x).toBeLessThan(-0.05);
     });
     player.group.updateMatrixWorld(true);
     player.lift.group.updateMatrixWorld(true);
     const leftFoot = playerRig.leftFoot.getWorldPosition(new THREE.Vector3());
     const rightFoot = playerRig.rightFoot.getWorldPosition(new THREE.Vector3());
     const [leftSupporter, rightSupporter] = player.lift.supporters;
-    expect(leftSupporter.leftHand.getWorldPosition(new THREE.Vector3()).distanceTo(leftFoot)).toBeLessThan(0.18);
-    expect(leftSupporter.rightHand.getWorldPosition(new THREE.Vector3()).distanceTo(leftFoot)).toBeLessThan(0.18);
-    expect(rightSupporter.leftHand.getWorldPosition(new THREE.Vector3()).distanceTo(rightFoot)).toBeLessThan(0.18);
-    expect(rightSupporter.rightHand.getWorldPosition(new THREE.Vector3()).distanceTo(rightFoot)).toBeLessThan(0.18);
+    expect(leftSupporter.leftHand.getWorldPosition(new THREE.Vector3()).distanceTo(leftFoot)).toBeLessThan(0.12);
+    expect(leftSupporter.rightHand.getWorldPosition(new THREE.Vector3()).distanceTo(leftFoot)).toBeLessThan(0.12);
+    expect(rightSupporter.leftHand.getWorldPosition(new THREE.Vector3()).distanceTo(rightFoot)).toBeLessThan(0.12);
+    expect(rightSupporter.rightHand.getWorldPosition(new THREE.Vector3()).distanceTo(rightFoot)).toBeLessThan(0.12);
+  });
+
+  it("does not solve supporter IK while the hidden formation is inactive", () => {
+    const player = createPlayer();
+    const supporter = player.lift.supporters[0];
+    supporter.leftShoulder.rotation.set(0.3, -0.2, 0.4);
+    const before = supporter.leftShoulder.quaternion.clone();
+
+    player.lift.update(1 / 60, player.position, 0, false);
+
+    expect(supporter.leftShoulder.quaternion.equals(before)).toBe(true);
   });
 
   it("restores ordinary player limb animation after landing", () => {

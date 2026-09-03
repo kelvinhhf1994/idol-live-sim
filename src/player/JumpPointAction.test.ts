@@ -60,6 +60,12 @@ describe("writeJumpPointPose", () => {
     expect(Math.sin(pose.rightArmX)).toBeGreaterThan(0);
     expect(Math.cos(pose.rightArmX)).toBeLessThan(0);
     expect(pose.leftArmX).toBeLessThan(0);
+    expect(pose.rightElbow).toBeGreaterThan(0.15);
+    expect(pose.rightElbow).toBeLessThan(0.45);
+    expect(pose.leftKnee).toBeGreaterThan(0.2);
+    expect(pose.rightKnee).toBeGreaterThan(0.2);
+    expect(pose.bodyX).toBe(0);
+    expect(pose.chestX).toBeGreaterThan(0);
   });
 
   it("crouches and retracts the pointing arm on landing", () => {
@@ -69,6 +75,8 @@ describe("writeJumpPointPose", () => {
 
     expect(pose.rightArmX).toBeLessThan(0.5);
     expect(pose.bodyY).toBeLessThan(0);
-    expect(pose.legX).toBeLessThan(0);
+    expect(pose.leftKnee).toBeGreaterThan(0.65);
+    expect(pose.rightKnee).toBeGreaterThan(0.65);
+    expect(pose.pelvisY).toBeLessThan(0);
   });
 });

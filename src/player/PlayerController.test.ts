@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { GENERIC_VENUE } from "../config/venue";
-import { createLowPolyPerson } from "../scene/createCharacter";
+import { createLowPolyPerson, GLOW_STICK_HEIGHT } from "../scene/createCharacter";
 import { calculateWorldMovement, getMoshPose, PlayerController } from "./PlayerController";
+import { DEFAULT_GAME_SETTINGS } from "./gameSettings";
 
 describe("calculateWorldMovement", () => {
   it("moves forward relative to a zero-yaw camera", () => {
@@ -57,6 +58,63 @@ describe("PlayerController", () => {
     expect(player.jump()).toBe(true);
   });
 
+  it("cannot walk directly from the floor into the raised stage", () => {
+    const player = new PlayerController(
+      createLowPolyPerson(),
+      GENERIC_VENUE,
+      GENERIC_VENUE.colliders,
+    );
+    player.position.set(0, 0, -8.8);
+
+    player.update(0.1, { x: 0, y: -1 }, 0, true);
+
+    expect(player.position.z).toBe(-8.8);
+    expect(player.position.y).toBe(0);
+  });
+
+  it("clears the front barrier and lands on the stage while descending", () => {
+    const player = new PlayerController(
+      createLowPolyPerson(),
+      GENERIC_VENUE,
+      GENERIC_VENUE.colliders,
+    );
+    player.position.set(0, 0, -6.8);
+    expect(player.jump()).toBe(true);
+
+    for (let frame = 0; frame < 120 && player.position.z > -9.5; frame += 1) {
+      player.update(1 / 60, { x: 0, y: -1 }, 0, true);
+    }
+    for (let frame = 0; frame < 180 && player.position.y > 0.75; frame += 1) {
+      player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    }
+
+    expect(player.position.z).toBeLessThan(-9.075);
+    expect(player.position.y).toBe(0.75);
+    expect(player.groundHeight).toBe(0.75);
+  });
+
+  it("falls to the venue floor after jumping out of stage bounds", () => {
+    const player = new PlayerController(
+      createLowPolyPerson(),
+      GENERIC_VENUE,
+      GENERIC_VENUE.colliders,
+    );
+    player.position.set(5.1, 0.75, -12.2);
+    player.update(0, { x: 0, y: 0 }, 0, true);
+    expect(player.jump()).toBe(true);
+
+    for (let frame = 0; frame < 30; frame += 1) {
+      player.update(1 / 60, { x: 1, y: 0 }, 0, true);
+    }
+    for (let frame = 0; frame < 180; frame += 1) {
+      player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    }
+
+    expect(player.position.x).toBeGreaterThan(5.625);
+    expect(player.position.y).toBe(0);
+    expect(player.groundHeight).toBe(0);
+  });
+
   it("continues horizontal movement while airborne", () => {
     const player = new PlayerController(createLowPolyPerson(), GENERIC_VENUE, []);
 
@@ -82,17 +140,53 @@ describe("PlayerController", () => {
     );
   });
 
-  it("moves at exactly ordinary speed while holding two-step", () => {
+  it("pulses two-step movement at 60 FPS while preserving ordinary cycle distance", () => {
     const player = new PlayerController(createLowPolyPerson(), GENERIC_VENUE, []);
     const walkingPlayer = new PlayerController(createLowPolyPerson(), GENERIC_VENUE, []);
+    const frameDeltas: number[] = [];
 
     player.startTwoStep();
-    player.update(0.1, { x: 1, y: 0 }, 0, true);
-    walkingPlayer.update(0.1, { x: 1, y: 0 }, 0, true);
+    for (let frame = 0; frame < 48; frame += 1) {
+      const before = player.position.x;
+      player.update(1 / 60, { x: 1, y: 0 }, 0, true);
+      walkingPlayer.update(1 / 60, { x: 1, y: 0 }, 0, true);
+      frameDeltas.push(player.position.x - before);
+    }
 
     expect(player.twoStepActive).toBe(true);
     expect(player.position.x).toBeCloseTo(walkingPlayer.position.x);
+    expect(Math.min(...frameDeltas)).toBeLessThan(0.02);
+    expect(Math.max(...frameDeltas)).toBeGreaterThan(0.09);
     expect(player.audienceImpact.mode).toBeNull();
+  });
+
+  it("advances clearly during a 2s two-step hold with forward input", () => {
+    const player = new PlayerController(createLowPolyPerson(), GENERIC_VENUE, []);
+    const walkingPlayer = new PlayerController(createLowPolyPerson(), GENERIC_VENUE, []);
+    player.debugPlaceOnGround(0, 5);
+    walkingPlayer.debugPlaceOnGround(0, 5);
+    const start = { x: player.position.x, z: player.position.z };
+
+    player.startTwoStep();
+    for (let frame = 0; frame < 120; frame += 1) {
+      // y < 0 is forward (KeyW) in movement space
+      player.update(1 / 60, { x: 0, y: -1 }, 0, true);
+      walkingPlayer.update(1 / 60, { x: 0, y: -1 }, 0, true);
+    }
+
+    const twoStepDistance = Math.hypot(
+      player.position.x - start.x,
+      player.position.z - start.z,
+    );
+    const walkDistance = Math.hypot(
+      walkingPlayer.position.x - start.x,
+      walkingPlayer.position.z - start.z,
+    );
+
+    expect(player.twoStepActive).toBe(true);
+    expect(twoStepDistance).toBeGreaterThan(5);
+    expect(twoStepDistance / walkDistance).toBeGreaterThan(0.85);
+    expect(twoStepDistance / walkDistance).toBeLessThan(1.15);
   });
 
   it("keeps two-step hold state during a jump and resumes its pose after landing", () => {
@@ -114,16 +208,33 @@ describe("PlayerController", () => {
     expect(player.twoStepAnimating).toBe(true);
   });
 
-  it("kicks toward negative Z and smoothly clears the pose after release", () => {
+  it("uses knee flexion and ankle counter-rotation for the low two-step crossover", () => {
     const rig = createLowPolyPerson();
     const player = new PlayerController(rig, GENERIC_VENUE, []);
-    player.startTwoStep();
-    player.update(0.3, { x: 0, y: 0 }, 0, true);
+    player.debugSetTwoStepPhase(0.25);
+    for (let frame = 0; frame < 30; frame += 1) {
+      player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    }
     rig.group.updateMatrixWorld(true);
 
     const rightFootDepth =
       rig.rightFoot.getWorldPosition(new THREE.Vector3()).z - player.position.z;
-    expect(rightFootDepth).toBeLessThan(-0.25);
+    expect(rightFootDepth).toBeLessThan(-0.1);
+    expect(rig.rightHip.rotation.x).toBeGreaterThan(0.35);
+    expect(rig.rightHip.rotation.x).toBeLessThan(0.55);
+    expect(rig.rightKnee.rotation.x).toBeLessThan(-0.75);
+    expect(
+      Math.abs(
+        rig.rightHip.rotation.x +
+          rig.rightKnee.rotation.x +
+          rig.rightFootPivot.rotation.x,
+      ),
+    ).toBeLessThan(0.02);
+    expect(rig.rightHip.rotation.z).toBeLessThan(-0.3);
+    expect(rig.chest.rotation.x).toBeLessThan(-0.18);
+    expect(Math.abs(rig.body.rotation.x)).toBeLessThan(0.01);
+    expect(rig.leftElbow.rotation.x).toBeGreaterThan(0.15);
+    expect(rig.rightElbow.rotation.x).toBeGreaterThan(0.35);
 
     player.releaseTwoStep();
     for (let frame = 0; frame < 60; frame += 1) {
@@ -134,8 +245,20 @@ describe("PlayerController", () => {
     expect(Math.abs(rig.rightLeg.rotation.x)).toBeLessThan(0.01);
     expect(Math.abs(rig.leftLeg.rotation.z)).toBeLessThan(0.01);
     expect(Math.abs(rig.rightLeg.rotation.z)).toBeLessThan(0.01);
+    expect(Math.abs(rig.leftKnee.rotation.x)).toBeLessThan(0.01);
+    expect(Math.abs(rig.rightKnee.rotation.x)).toBeLessThan(0.01);
+    expect(Math.abs(rig.leftFootPivot.rotation.x)).toBeLessThan(0.01);
+    expect(Math.abs(rig.rightFootPivot.rotation.x)).toBeLessThan(0.01);
     expect(Math.abs(rig.leftArm.rotation.x)).toBeLessThan(0.01);
     expect(Math.abs(rig.rightArm.rotation.x)).toBeLessThan(0.01);
+    expect(Math.abs(rig.leftElbow.rotation.x)).toBeLessThan(0.01);
+    expect(Math.abs(rig.rightElbow.rotation.x)).toBeLessThan(0.01);
+    expect(Math.abs(rig.body.position.y)).toBeLessThan(0.01);
+    expect(Math.abs(rig.body.rotation.x)).toBeLessThan(0.01);
+    expect(Math.abs(rig.body.rotation.y)).toBeLessThan(0.01);
+    expect(Math.abs(rig.body.rotation.z)).toBeLessThan(0.01);
+    expect(Math.abs(rig.chest.rotation.x)).toBeLessThan(0.01);
+    expect(Math.abs(rig.pelvis.position.y - 0.64)).toBeLessThan(0.01);
   });
 
   it("keeps mosh, lift, and two-step mutually exclusive", () => {
@@ -186,11 +309,41 @@ describe("PlayerController", () => {
   });
 
   it("keeps ordinary jump separate from jump-point pose", () => {
-    const player = new PlayerController(createLowPolyPerson(), GENERIC_VENUE, []);
+    const rig = createLowPolyPerson();
+    const player = new PlayerController(rig, GENERIC_VENUE, []);
 
     expect(player.jump()).toBe(true);
     expect(player.jumpPointActive).toBe(false);
     expect(player.jumpPointHeld).toBe(false);
+    player.update(0.2, { x: 0, y: 0 }, 0, true);
+    expect(rig.leftKnee.rotation.x).toBeLessThan(-0.2);
+    expect(rig.rightKnee.rotation.x).toBeLessThan(-0.2);
+  });
+
+  it("points with a bent right elbow and absorbs jump-point landing through both knees", () => {
+    const rig = createLowPolyPerson();
+    const player = new PlayerController(rig, GENERIC_VENUE, []);
+    const initialYaw = player.group.rotation.y;
+
+    player.startJumpPoint();
+    player.releaseJumpPoint();
+    player.update(0.2, { x: 0, y: 0 }, Math.PI / 2, true);
+
+    expect(rig.rightShoulder.rotation.x).toBeGreaterThan(Math.PI / 2);
+    expect(rig.rightElbow.rotation.x).toBeGreaterThan(0.15);
+    expect(rig.leftKnee.rotation.x).toBeLessThan(-0.2);
+    expect(rig.rightKnee.rotation.x).toBeLessThan(-0.2);
+    expect(rig.chest.rotation.x).toBeGreaterThan(0.04);
+    expect(player.group.rotation.y).toBe(initialYaw);
+
+    for (let frame = 0; frame < 180 && player.position.y > player.groundHeight; frame += 1) {
+      player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    }
+    for (let frame = 0; frame < 4; frame += 1) {
+      player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    }
+    expect(rig.leftKnee.rotation.x).toBeLessThan(-0.4);
+    expect(rig.rightKnee.rotation.x).toBeLessThan(-0.4);
   });
 
   it("cancels jump-point when another action starts without forcing landing", () => {
@@ -211,8 +364,10 @@ describe("PlayerController", () => {
     const rig = createLowPolyPerson();
     const player = new PlayerController(rig, GENERIC_VENUE, []);
 
-    player.startMosh();
-    player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    player.debugSetMoshPhase(0.25);
+    for (let frame = 0; frame < 30; frame += 1) {
+      player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    }
     rig.group.updateMatrixWorld(true);
     const startLeftDepth = rig.leftHand.getWorldPosition(new THREE.Vector3()).z - player.position.z;
     const startRightDepth = rig.rightHand.getWorldPosition(new THREE.Vector3()).z - player.position.z;
@@ -222,8 +377,10 @@ describe("PlayerController", () => {
 
     const halfCycleRig = createLowPolyPerson();
     const halfCyclePlayer = new PlayerController(halfCycleRig, GENERIC_VENUE, []);
-    halfCyclePlayer.startMosh();
-    halfCyclePlayer.update(0.325, { x: 0, y: 0 }, 0, true);
+    halfCyclePlayer.debugSetMoshPhase(0.75);
+    for (let frame = 0; frame < 30; frame += 1) {
+      halfCyclePlayer.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    }
     halfCycleRig.group.updateMatrixWorld(true);
     const halfLeftDepth =
       halfCycleRig.leftHand.getWorldPosition(new THREE.Vector3()).z - halfCyclePlayer.position.z;
@@ -243,10 +400,11 @@ describe("PlayerController", () => {
     expect(start.rightArm - start.leftArm).toBeCloseTo(Math.PI);
     expect(half.leftArm).toBeCloseTo(start.rightArm - Math.PI * 2);
     expect(half.rightArm).toBeCloseTo(start.leftArm);
-    expect(quarter.rightArm).toBeCloseTo(Math.PI);
-    expect(strike.rightArm).toBeLessThan(quarter.rightArm);
-    expect(strike.rightArm).toBeGreaterThan(Math.PI / 2);
-    expect(Math.sin(strike.rightArm)).toBeGreaterThan(0);
+    expect(start.leftArm).toBeCloseTo(Math.PI);
+    expect(quarter.leftArm).toBeCloseTo(Math.PI / 2);
+    expect(strike.leftArm).toBeLessThan(quarter.leftArm);
+    expect(strike.leftArm).toBeGreaterThan(0);
+    expect(Math.sin(strike.leftArm)).toBeGreaterThan(0.5);
   });
 
   it("leans forward 12 to 20 degrees during mosh and smoothly returns upright", () => {
@@ -256,10 +414,15 @@ describe("PlayerController", () => {
     player.startMosh();
     player.update(0.1, { x: 0, y: 0 }, 0, true);
 
-    expect(rig.body.rotation.x).toBeLessThanOrEqual(THREE.MathUtils.degToRad(-12));
-    expect(rig.body.rotation.x).toBeGreaterThanOrEqual(THREE.MathUtils.degToRad(-20));
+    expect(Math.abs(rig.body.rotation.x)).toBeLessThan(0.01);
+    expect(rig.chest.rotation.x).toBeLessThanOrEqual(THREE.MathUtils.degToRad(-12));
+    expect(rig.chest.rotation.x).toBeGreaterThanOrEqual(THREE.MathUtils.degToRad(-20));
     expect(Math.abs(rig.leftLeg.rotation.x)).toBeGreaterThan(0.15);
     expect(rig.rightLeg.rotation.x).toBeCloseTo(-rig.leftLeg.rotation.x);
+    expect(rig.leftKnee.rotation.x).toBeLessThan(-0.05);
+    expect(rig.rightKnee.rotation.x).toBeLessThan(-0.05);
+    expect(rig.leftShoulder.rotation.z).toBeLessThan(0);
+    expect(rig.rightShoulder.rotation.z).toBeGreaterThan(0);
 
     player.releaseMosh();
     for (let frame = 0; frame < 60; frame += 1) {
@@ -267,7 +430,7 @@ describe("PlayerController", () => {
     }
 
     expect(player.moshActive).toBe(false);
-    expect(Math.abs(rig.body.rotation.x)).toBeLessThan(0.01);
+    expect(Math.abs(rig.chest.rotation.x)).toBeLessThan(0.01);
   });
 
   it("allows jumping during ordinary mosh", () => {
@@ -287,6 +450,28 @@ describe("PlayerController", () => {
     expect(player.position.z).toBeLessThan(GENERIC_VENUE.spawn.z);
   });
 
+  it("walks with swing and support knee flexion plus flat-foot ankle compensation", () => {
+    const rig = createLowPolyPerson();
+    const player = new PlayerController(rig, GENERIC_VENUE, []);
+
+    player.update(0.1, { x: 0, y: -1 }, 0, true);
+
+    expect(rig.leftHip.rotation.x).toBeGreaterThan(0.3);
+    expect(rig.leftKnee.rotation.x).toBeLessThan(-0.15);
+    expect(rig.leftKnee.rotation.x).toBeGreaterThan(-0.61);
+    expect(rig.rightKnee.rotation.x).toBeLessThan(-0.05);
+    expect(rig.rightKnee.rotation.x).toBeGreaterThan(-0.16);
+    expect(
+      Math.abs(
+        rig.leftHip.rotation.x +
+          rig.leftKnee.rotation.x +
+          rig.leftFootPivot.rotation.x,
+      ),
+    ).toBeLessThan(0.08);
+    expect(rig.leftElbow.rotation.x).toBeGreaterThan(0.1);
+    expect(rig.rightElbow.rotation.x).toBeGreaterThan(0.1);
+  });
+
   it("does not move through a nearby obstacle", () => {
     const player = new PlayerController(createLowPolyPerson(), GENERIC_VENUE, [
       { minX: -1, maxX: 1, minZ: 19.5, maxZ: 19.7 },
@@ -295,5 +480,151 @@ describe("PlayerController", () => {
     player.update(0.1, { x: 0, y: -1 }, 0, true);
 
     expect(player.position.z).toBe(GENERIC_VENUE.spawn.z);
+  });
+
+  it("applies configurable movement and jump multipliers", () => {
+    const boosted = new PlayerController(createLowPolyPerson(), GENERIC_VENUE, []);
+    const baseline = new PlayerController(createLowPolyPerson(), GENERIC_VENUE, []);
+    boosted.setGameSettings({
+      walkSpeed: 2,
+      moshSpeed: 1.25,
+      liftSpeed: 2,
+      twoStepSpeed: 1,
+      jumpScale: 2,
+      wiperSpeed: 1,
+      beatSpeed: 1,
+    });
+
+    boosted.update(0.1, { x: 1, y: 0 }, 0, true);
+    baseline.update(0.1, { x: 1, y: 0 }, 0, true);
+    expect(boosted.position.x - GENERIC_VENUE.spawn.x).toBeCloseTo(
+      (baseline.position.x - GENERIC_VENUE.spawn.x) * 2,
+    );
+
+    expect(boosted.jump()).toBe(true);
+    expect(baseline.jump()).toBe(true);
+    boosted.update(0.05, { x: 0, y: 0 }, 0, true);
+    baseline.update(0.05, { x: 0, y: 0 }, 0, true);
+    expect(boosted.position.y).toBeGreaterThan(baseline.position.y);
+  });
+
+  it("keeps raise and point penlight poses while walking and suppresses them during mosh", () => {
+    const rig = createLowPolyPerson({ glowStick: true });
+    const player = new PlayerController(rig, GENERIC_VENUE, []);
+    expect(rig.glowStick).not.toBeNull();
+
+    player.setPenlightColor("aqua");
+    expect(player.penlight.colorId).toBe("aqua");
+    const material = rig.glowStick!.material as THREE.MeshStandardMaterial;
+    expect(material.emissive.getHex()).toBe(0x3ad7ff);
+
+    player.togglePenlightPose("raise");
+    expect(player.penlight.pose).toBe("raise");
+    expect(player.penlightPoseActive).toBe(true);
+    expect(Math.abs(rig.glowStick!.rotation.x)).toBeGreaterThan(2.5);
+
+    player.update(0.1, { x: 1, y: 0 }, 0, true);
+    expect(player.penlightPoseActive).toBe(true);
+    // One frame while walking still blends toward the vertical target.
+    expect(rig.rightShoulder.rotation.x).toBeGreaterThan(1.5);
+
+    // After settling: straight vertical raise (~π on X); arm must not lean left via Z.
+    for (let i = 0; i < 40; i += 1) player.update(0.05, { x: 0, y: 0 }, 0, true);
+    expect(Math.abs(rig.rightShoulder.rotation.x - Math.PI)).toBeLessThan(0.1);
+    expect(Math.abs(rig.rightShoulder.rotation.z)).toBeLessThan(0.08);
+    expect(Math.abs(rig.rightShoulder.rotation.y)).toBeLessThan(0.08);
+    expect(Math.abs(rig.rightElbow.rotation.x)).toBeLessThan(0.1);
+    rig.group.updateMatrixWorld(true);
+    const handWorld = rig.rightHand.getWorldPosition(new THREE.Vector3());
+    const tipWorld = rig.glowStick!.localToWorld(new THREE.Vector3(0, GLOW_STICK_HEIGHT, 0));
+    const hand = rig.group.worldToLocal(handWorld.clone());
+    const tip = rig.group.worldToLocal(tipWorld.clone());
+    // Tip above hand; stick tilt (not arm lean) provides left / forward bias.
+    expect(tip.y).toBeGreaterThan(hand.y + 0.12);
+    expect(tip.x).toBeLessThan(hand.x - 0.1);
+    expect(-(tip.z - hand.z)).toBeGreaterThan(0.05);
+
+    player.startMosh();
+    player.update(0.05, { x: 0, y: 0 }, 0, true);
+    expect(player.penlightPoseActive).toBe(false);
+    expect(player.penlight.pose).toBe("raise");
+
+    player.releaseMosh();
+    for (let i = 0; i < 20; i += 1) player.update(0.05, { x: 0, y: 0 }, 0, true);
+    expect(player.moshActive).toBe(false);
+    expect(player.penlightPoseActive).toBe(true);
+
+    player.togglePenlightPose("point");
+    expect(player.penlight.pose).toBe("point");
+    for (let i = 0; i < 60; i += 1) player.update(0.05, { x: 0, y: 0 }, 0, true);
+    // Stage point: forward + 45° elevation (3π/4), no side lean while standing.
+    const pointed = Math.atan2(
+      Math.sin(rig.rightShoulder.rotation.x),
+      Math.cos(rig.rightShoulder.rotation.x),
+    );
+    expect(Math.abs(pointed - (Math.PI * 3) / 4)).toBeLessThan(0.4);
+    expect(Math.abs(rig.rightShoulder.rotation.z)).toBeLessThan(0.08);
+    expect(Math.abs(rig.rightShoulder.rotation.y)).toBeLessThan(0.08);
+
+    // Walking must keep the same 45° elevation toward the stage.
+    for (let i = 0; i < 40; i += 1) player.update(0.05, { x: 1, y: 0 }, 0, true);
+    const walkingPoint = Math.atan2(
+      Math.sin(rig.rightShoulder.rotation.x),
+      Math.cos(rig.rightShoulder.rotation.x),
+    );
+    expect(Math.abs(walkingPoint - (Math.PI * 3) / 4)).toBeLessThan(0.4);
+  });
+
+  it("grips the penlight at the bottom handle in idle raise and point", () => {
+    const rig = createLowPolyPerson({ glowStick: true });
+    const player = new PlayerController(rig, GENERIC_VENUE, []);
+    for (const pose of ["idle", "raise", "point"] as const) {
+      player.setPenlightState({ colorId: "pink", pose });
+      for (let i = 0; i < 30; i += 1) player.update(0.05, { x: 0, y: 0 }, 0, true);
+      rig.group.updateMatrixWorld(true);
+      const hand = rig.rightHand.getWorldPosition(new THREE.Vector3());
+      const bottom = rig.glowStick!.localToWorld(new THREE.Vector3(0, 0, 0));
+      const tip = rig.glowStick!.localToWorld(new THREE.Vector3(0, GLOW_STICK_HEIGHT, 0));
+      expect(hand.distanceTo(bottom), `${pose} grip`).toBeLessThan(0.08);
+      expect(hand.distanceTo(tip), `${pose} tip`).toBeGreaterThan(0.35);
+    }
+  });
+
+  it("animates wiper and beat cheer poses and scales with speed settings", () => {
+    const rig = createLowPolyPerson({ glowStick: true });
+    const player = new PlayerController(rig, GENERIC_VENUE, []);
+
+    player.togglePenlightPose("wiper");
+    expect(player.penlight.pose).toBe("wiper");
+    for (let i = 0; i < 40; i += 1) player.update(0.05, { x: 0, y: 0 }, 0, true);
+    expect(player.penlightPoseActive).toBe(true);
+    expect(rig.rightShoulder.rotation.x).toBeGreaterThan(2.2);
+    const zSamples: number[] = [];
+    for (let i = 0; i < 30; i += 1) {
+      player.update(0.05, { x: 0, y: 0 }, 0, true);
+      zSamples.push(rig.rightShoulder.rotation.z);
+    }
+    expect(Math.max(...zSamples) - Math.min(...zSamples)).toBeGreaterThan(0.3);
+
+    player.togglePenlightPose("beat");
+    expect(player.penlight.pose).toBe("beat");
+    for (let i = 0; i < 40; i += 1) player.update(0.05, { x: 0, y: 0 }, 0, true);
+    expect(rig.rightShoulder.rotation.x).toBeGreaterThan(1.2);
+    expect(Math.abs(rig.rightShoulder.rotation.z)).toBeLessThan(0.2);
+
+    const slow = createLowPolyPerson({ glowStick: true });
+    const fast = createLowPolyPerson({ glowStick: true });
+    const slowPlayer = new PlayerController(slow, GENERIC_VENUE, []);
+    const fastPlayer = new PlayerController(fast, GENERIC_VENUE, []);
+    slowPlayer.setGameSettings({ ...DEFAULT_GAME_SETTINGS, beatSpeed: 0.5 });
+    fastPlayer.setGameSettings({ ...DEFAULT_GAME_SETTINGS, beatSpeed: 2.5 });
+    slowPlayer.togglePenlightPose("beat");
+    fastPlayer.togglePenlightPose("beat");
+    for (let i = 0; i < 20; i += 1) {
+      slowPlayer.update(0.05, { x: 0, y: 0 }, 0, true);
+      fastPlayer.update(0.05, { x: 0, y: 0 }, 0, true);
+    }
+    // Faster beat reaches a deeper thrust earlier in the same wall-clock window.
+    expect(fast.rightElbow.rotation.x).not.toBeCloseTo(slow.rightElbow.rotation.x, 2);
   });
 });
