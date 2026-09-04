@@ -18,10 +18,22 @@
       <section id="entry" class="entry-screen">
         <div class="entry-screen__noise"></div>
         <div class="entry-card">
-          <p class="eyebrow">HONG KONG · TONIGHT</p>
-          <h1>NEON<br />BACKSTAGE</h1>
-          <p class="entry-card__copy">走入現場，穿過人群，從你的角度感受舞台。</p>
-          <button id="enter-button" class="primary-button" type="button">進入場館</button>
+          <p class="eyebrow">HONG KONG · LIVEHOUSE LINE</p>
+          <h1 id="entry-title">NEON<br />BACKSTAGE</h1>
+
+          <div class="metro-selector" aria-label="場館站點路線選擇">
+            <div class="metro-selector__meta">
+              <span class="metro-line-tag">LIVEHOUSE LINE 01</span>
+              <span id="station-status-badge" class="station-badge station-badge--active">現正開放 · LIVE</span>
+            </div>
+            <div id="station-track" class="metro-track" role="tablist" aria-label="場館路線站點"></div>
+          </div>
+
+          <p id="station-copy" class="entry-card__copy">走入現場，穿過人群，從你的角度感受舞台。</p>
+          <div class="entry-actions">
+            <button id="enter-button" class="primary-button" type="button">進入場館</button>
+            <p id="enter-feedback" class="enter-feedback" aria-live="polite"></p>
+          </div>
           <p id="loading-label" class="loading-label">場館準備完成</p>
         </div>
       </section>
@@ -29,7 +41,7 @@
       <section id="hud" class="hud" hidden>
         <div class="venue-badge">
           <span class="venue-badge__dot"></span>
-          <span>LIVE · NEON BACKSTAGE</span>
+          <span id="venue-badge-text">LIVE · NEON BACKSTAGE</span>
         </div>
 
         <div id="joystick" class="joystick" aria-label="移動搖桿">

@@ -646,3 +646,43 @@ test("hides YouTube controls and supports penlight plus settings panels", async 
     .poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().settings.walkSpeed ?? 0))
     .toBeCloseTo(1, 5);
 });
+
+test("supports cyberpunk MTR station selector and 5-click easter egg entry", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const metroSelector = page.locator(".metro-selector");
+  await expect(metroSelector).toBeVisible();
+
+  const stations = page.locator(".metro-station");
+  await expect(stations).toHaveCount(5);
+
+  await expect(stations.nth(0)).toContainText("NeoBackstage");
+  await expect(stations.nth(1)).toContainText("牛頭角");
+  await expect(stations.nth(2)).toContainText("九龍灣");
+  await expect(stations.nth(3)).toContainText("鑽石山");
+  await expect(stations.nth(4)).toContainText("旺角");
+
+  // Select 2nd station (牛頭角)
+  await stations.nth(1).click();
+  await expect(page.locator("#entry-title")).toContainText("牛頭角");
+  await expect(page.locator("#station-copy")).toHaveText("即將推出");
+  await expect(page.locator("#station-status-badge")).toContainText("即將推出");
+
+  const enterButton = page.locator("#enter-button");
+  const feedback = page.locator("#enter-feedback");
+
+  // Click 1 to 4 should not enter
+  for (let i = 1; i <= 4; i++) {
+    await enterButton.click();
+    await expect(page.locator("#entry")).toBeVisible();
+    await expect(feedback).toContainText(`尚餘 ${5 - i} 次`);
+  }
+
+  // 5th click enters
+  await enterButton.click();
+  await expect(page.locator("#entry")).toBeHidden();
+  await expect(page.locator("#hud")).toBeVisible();
+  await expect(page.locator("#venue-badge-text")).toContainText("LIVE · 牛頭角");
+});

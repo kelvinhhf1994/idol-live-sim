@@ -28,6 +28,7 @@ import { createLowPolyPerson, DENIM_JEANS } from "../scene/createCharacter";
 import { createVenue, type VenueBuild } from "../scene/createVenue";
 import { ShowController } from "../show/ShowController";
 import { getFullscreenPresentation } from "../ui/fullscreenMode";
+import { StationSelector, type Station } from "../ui/StationSelector";
 import { YouTubePlayer } from "../ui/YouTubePlayer";
 
 export interface AppSnapshot {
@@ -127,6 +128,8 @@ export class App {
   private readonly settingsPanelClose = requireElement<HTMLButtonElement>("settings-panel-close");
   private readonly settingsReset = requireElement<HTMLButtonElement>("settings-reset");
   private readonly videoPanel = requireElement<HTMLElement>("video-panel");
+  private readonly stationSelector: StationSelector;
+  private readonly venueBadgeText: HTMLElement | null;
   private frameId = 0;
   private lastWidth = 0;
   private lastHeight = 0;
@@ -270,6 +273,21 @@ export class App {
     this.syncSettingsControls(this.player.gameSettings);
     this.syncPenlightChrome();
 
+    this.venueBadgeText = document.querySelector<HTMLElement>("#venue-badge-text");
+    this.stationSelector = new StationSelector(
+      {
+        track: requireElement<HTMLElement>("station-track"),
+        titleElement: requireElement<HTMLElement>("entry-title"),
+        copyElement: requireElement<HTMLElement>("station-copy"),
+        statusBadge: requireElement<HTMLElement>("station-status-badge"),
+        enterButton: this.enterButton,
+        feedbackElement: requireElement<HTMLElement>("enter-feedback"),
+      },
+      {
+        onEnter: (station) => this.handleEnterWithStation(station),
+      },
+    );
+
     this.enterButton.addEventListener("click", this.handleEnter);
     this.jumpButton.addEventListener("pointerdown", this.handleJump);
     this.liftButton.addEventListener("click", this.handleLiftToggle);
@@ -404,6 +422,7 @@ export class App {
     this.jumpPointButton.dispose();
     this.beatButton.dispose();
     this.cameraController.dispose();
+    this.stationSelector.dispose();
     this.youtubePlayer?.dispose();
     this.timer.dispose();
     disposeScene(this.scene);
@@ -429,9 +448,16 @@ export class App {
   };
 
   private readonly handleEnter = (): void => {
+    this.stationSelector.handleEnterClick();
+  };
+
+  private readonly handleEnterWithStation = (station: Station): void => {
     this.entered = true;
     this.entryScreen.hidden = true;
     this.hud.hidden = false;
+    if (this.venueBadgeText) {
+      this.venueBadgeText.textContent = `LIVE · ${station.id === "neo-backstage" ? "NEON BACKSTAGE" : station.name}`;
+    }
   };
 
   private readonly handleJump = (event: PointerEvent): void => {
