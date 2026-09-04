@@ -4,6 +4,7 @@ import { GENERIC_VENUE } from "../config/venue";
 import { createLowPolyPerson, GLOW_STICK_HEIGHT } from "../scene/createCharacter";
 import { calculateWorldMovement, getMoshPose, PlayerController } from "./PlayerController";
 import { DEFAULT_GAME_SETTINGS } from "./gameSettings";
+import { BEAT_ARM_READY, BEAT_ARM_THRUST } from "./penlight";
 
 describe("calculateWorldMovement", () => {
   it("moves forward relative to a zero-yaw camera", () => {
@@ -208,7 +209,7 @@ describe("PlayerController", () => {
     expect(player.twoStepAnimating).toBe(true);
   });
 
-  it("uses knee flexion and ankle counter-rotation for the low two-step crossover", () => {
+  it("uses deep knee flexion for the two-step butt-kick with back extension", () => {
     const rig = createLowPolyPerson();
     const player = new PlayerController(rig, GENERIC_VENUE, []);
     player.debugSetTwoStepPhase(0.25);
@@ -219,22 +220,25 @@ describe("PlayerController", () => {
 
     const rightFootDepth =
       rig.rightFoot.getWorldPosition(new THREE.Vector3()).z - player.position.z;
-    expect(rightFootDepth).toBeLessThan(-0.1);
-    expect(rig.rightHip.rotation.x).toBeGreaterThan(0.35);
-    expect(rig.rightHip.rotation.x).toBeLessThan(0.55);
-    expect(rig.rightKnee.rotation.x).toBeLessThan(-0.75);
-    expect(
-      Math.abs(
-        rig.rightHip.rotation.x +
-          rig.rightKnee.rotation.x +
-          rig.rightFootPivot.rotation.x,
-      ),
-    ).toBeLessThan(0.02);
-    expect(rig.rightHip.rotation.z).toBeLessThan(-0.3);
-    expect(rig.chest.rotation.x).toBeLessThan(-0.18);
+    // Heel kicked behind the body (character faces -Z).
+    expect(rightFootDepth).toBeGreaterThan(0.2);
+    expect(rig.rightHip.rotation.x).toBeLessThan(-0.25);
+    expect(rig.rightHip.rotation.x).toBeGreaterThan(-0.4);
+    expect(rig.rightKnee.rotation.x).toBeLessThan(-1.3);
+    expect(rig.rightHip.rotation.z).toBeLessThan(-0.25);
+    expect(rig.chest.rotation.x).toBeLessThan(-0.35);
     expect(Math.abs(rig.body.rotation.x)).toBeLessThan(0.01);
+    // Lateral hop: body shifts onto the left support side.
+    expect(rig.body.position.x).toBeLessThan(-0.2);
+    expect(rig.leftShoulder.rotation.z).toBeLessThan(-Math.PI / 2);
     expect(rig.leftElbow.rotation.x).toBeGreaterThan(0.15);
-    expect(rig.rightElbow.rotation.x).toBeGreaterThan(0.35);
+    expect(rig.rightElbow.rotation.x).toBeGreaterThan(0.5);
+
+    player.debugSetTwoStepPhase(0.75);
+    for (let frame = 0; frame < 30; frame += 1) {
+      player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    }
+    expect(rig.body.position.x).toBeGreaterThan(0.2);
 
     player.releaseTwoStep();
     for (let frame = 0; frame < 60; frame += 1) {
@@ -254,6 +258,7 @@ describe("PlayerController", () => {
     expect(Math.abs(rig.leftElbow.rotation.x)).toBeLessThan(0.01);
     expect(Math.abs(rig.rightElbow.rotation.x)).toBeLessThan(0.01);
     expect(Math.abs(rig.body.position.y)).toBeLessThan(0.01);
+    expect(Math.abs(rig.body.position.x)).toBeLessThan(0.01);
     expect(Math.abs(rig.body.rotation.x)).toBeLessThan(0.01);
     expect(Math.abs(rig.body.rotation.y)).toBeLessThan(0.01);
     expect(Math.abs(rig.body.rotation.z)).toBeLessThan(0.01);
@@ -306,6 +311,32 @@ describe("PlayerController", () => {
       player.update(1 / 60, { x: 0, y: 0 }, 0, true);
     }
     expect(player.jumpPointActive).toBe(false);
+  });
+
+  it("keeps the glow stick in the stage-point pose during jump-point", () => {
+    const rig = createLowPolyPerson({ glowStick: true });
+    const player = new PlayerController(rig, GENERIC_VENUE, []);
+
+    expect(player.startJumpPoint()).toBe(true);
+    for (let i = 0; i < 12; i += 1) player.update(0.05, { x: 0, y: 0 }, 0, true);
+
+    expect(player.jumpPointActive || player.jumpPointHeld).toBe(true);
+    expect(rig.glowStick).not.toBeNull();
+    expect(rig.glowStick!.visible).toBe(true);
+    // PENLIGHT_STICK_POINT: flipped shaft so the tip tracks the forearm toward stage.
+    expect(rig.glowStick!.rotation.x).toBeCloseTo(Math.PI, 5);
+  });
+
+  it("keeps the glow stick stage-pointed while lifted", () => {
+    const rig = createLowPolyPerson({ glowStick: true });
+    const player = new PlayerController(rig, GENERIC_VENUE, []);
+    player.setLiftActive(true);
+    for (let i = 0; i < 60; i += 1) player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+
+    expect(player.liftActive).toBe(true);
+    expect(rig.glowStick!.visible).toBe(true);
+    expect(rig.glowStick!.rotation.x).toBeCloseTo(Math.PI, 5);
+    expect(rig.rightArm.rotation.x).toBeCloseTo(Math.PI / 2 + Math.PI / 4, 5);
   });
 
   it("keeps ordinary jump separate from jump-point pose", () => {
@@ -606,11 +637,66 @@ describe("PlayerController", () => {
     }
     expect(Math.max(...zSamples) - Math.min(...zSamples)).toBeGreaterThan(0.3);
 
-    player.togglePenlightPose("beat");
+    player.startBeat();
     expect(player.penlight.pose).toBe("beat");
-    for (let i = 0; i < 40; i += 1) player.update(0.05, { x: 0, y: 0 }, 0, true);
-    expect(rig.rightShoulder.rotation.x).toBeGreaterThan(1.2);
-    expect(Math.abs(rig.rightShoulder.rotation.z)).toBeLessThan(0.2);
+    expect(player.beatActive).toBe(true);
+    expect(player.beatHeld).toBe(true);
+
+    // Sample one full slow cycle: elbow flexes between ready (~2.0) and peak thrust (~0.7).
+    const elbowSamples: number[] = [];
+    const shoulderXSamples: number[] = [];
+    for (let i = 0; i < 30; i += 1) {
+      player.update(0.05, { x: 0, y: 0 }, 0, true);
+      elbowSamples.push(rig.rightElbow.rotation.x);
+      shoulderXSamples.push(rig.rightShoulder.rotation.x);
+      // Chest-front kizami: upper arm stays down beside the ribs throughout.
+      expect(rig.rightShoulder.rotation.x).toBeLessThan(Math.PI / 2);
+      expect(Math.abs(rig.rightShoulder.rotation.z)).toBeLessThan(0.25);
+    }
+    const minElbow = Math.min(...elbowSamples);
+    const maxElbow = Math.max(...elbowSamples);
+    expect(minElbow).toBeLessThan(BEAT_ARM_READY.rightElbow - 0.4);
+    expect(minElbow).toBeGreaterThan(BEAT_ARM_THRUST.rightElbow - 0.15);
+    expect(maxElbow).toBeGreaterThan(BEAT_ARM_READY.rightElbow - 0.35);
+    expect(Math.min(...shoulderXSamples)).toBeGreaterThan(0.1);
+
+    // Stick pitch offset in character space: reaches forward 45° (-π/4) and retracts back to 100° (+10°).
+    const armX = rig.rightShoulder.rotation.x + rig.rightElbow.rotation.x;
+    expect(Math.abs(rig.glowStick!.rotation.x + armX)).toBeLessThan(1.15);
+
+    // Retraction is animated: after peak, elbow climbs back toward ready without sudden jumps.
+    const retractRig = createLowPolyPerson({ glowStick: true });
+    const retractPlayer = new PlayerController(retractRig, GENERIC_VENUE, []);
+    retractPlayer.startBeat();
+    // Advance into the hold/peak window (~0.30 cycle at BEAT_CYCLE_RATE 0.85 ≈ 0.35s).
+    for (let i = 0; i < 8; i += 1) retractPlayer.update(0.05, { x: 0, y: 0 }, 0, true);
+    const peakElbow = retractRig.rightElbow.rotation.x;
+    expect(peakElbow).toBeLessThan(1.2);
+    const peakStickPitch =
+      retractRig.glowStick!.rotation.x +
+      retractRig.rightShoulder.rotation.x +
+      retractRig.rightElbow.rotation.x;
+    expect(peakStickPitch).toBeLessThan(-0.5); // forward tilted toward -π/4 (-0.785 rad, 45°)
+
+    const retractElbows: number[] = [peakElbow];
+    const retractStickPitches: number[] = [peakStickPitch];
+    for (let i = 0; i < 16; i += 1) {
+      retractPlayer.update(0.05, { x: 0, y: 0 }, 0, true);
+      retractElbows.push(retractRig.rightElbow.rotation.x);
+      retractStickPitches.push(
+        retractRig.glowStick!.rotation.x +
+          retractRig.rightShoulder.rotation.x +
+          retractRig.rightElbow.rotation.x,
+      );
+    }
+    // Overall climb toward ready pose across the slow retract window.
+    expect(retractElbows[retractElbows.length - 1]!).toBeGreaterThan(peakElbow + 0.3);
+    // No abrupt snaps: consecutive samples change by less than a hard jump.
+    for (let i = 1; i < retractElbows.length; i += 1) {
+      expect(Math.abs(retractElbows[i]! - retractElbows[i - 1]!)).toBeLessThan(0.35);
+    }
+    // During the retract window (around phase 0.85), stick tilts back toward +10° (+0.175 rad, 100°)
+    expect(Math.max(...retractStickPitches)).toBeGreaterThan(0.12);
 
     const slow = createLowPolyPerson({ glowStick: true });
     const fast = createLowPolyPerson({ glowStick: true });
@@ -618,13 +704,40 @@ describe("PlayerController", () => {
     const fastPlayer = new PlayerController(fast, GENERIC_VENUE, []);
     slowPlayer.setGameSettings({ ...DEFAULT_GAME_SETTINGS, beatSpeed: 0.5 });
     fastPlayer.setGameSettings({ ...DEFAULT_GAME_SETTINGS, beatSpeed: 2.5 });
-    slowPlayer.togglePenlightPose("beat");
-    fastPlayer.togglePenlightPose("beat");
+    slowPlayer.startBeat();
+    fastPlayer.startBeat();
     for (let i = 0; i < 20; i += 1) {
       slowPlayer.update(0.05, { x: 0, y: 0 }, 0, true);
       fastPlayer.update(0.05, { x: 0, y: 0 }, 0, true);
     }
     // Faster beat reaches a deeper thrust earlier in the same wall-clock window.
     expect(fast.rightElbow.rotation.x).not.toBeCloseTo(slow.rightElbow.rotation.x, 2);
+  });
+
+  it("taps one beat cycle on release and keeps beating while held", () => {
+    const player = new PlayerController(createLowPolyPerson({ glowStick: true }), GENERIC_VENUE, []);
+
+    player.startBeat();
+    expect(player.beatActive).toBe(true);
+    player.releaseBeat();
+    expect(player.beatHeld).toBe(false);
+    expect(player.beatActive).toBe(true);
+    expect(player.penlight.pose).toBe("beat");
+
+    // Default speed: one cycle ≈ 1.18s.
+    for (let i = 0; i < 22; i += 1) player.update(0.05, { x: 0, y: 0 }, 0, true);
+    expect(player.beatActive).toBe(true);
+    player.update(0.15, { x: 0, y: 0 }, 0, true);
+    expect(player.beatActive).toBe(false);
+    expect(player.penlight.pose).toBe("idle");
+
+    player.startBeat();
+    for (let i = 0; i < 40; i += 1) player.update(0.05, { x: 0, y: 0 }, 0, true);
+    expect(player.beatActive).toBe(true);
+    expect(player.penlight.pose).toBe("beat");
+    player.releaseBeat();
+    for (let i = 0; i < 30; i += 1) player.update(0.05, { x: 0, y: 0 }, 0, true);
+    expect(player.beatActive).toBe(false);
+    expect(player.penlight.pose).toBe("idle");
   });
 });

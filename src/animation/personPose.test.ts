@@ -72,6 +72,17 @@ describe("person pose target", () => {
     expect(rig.leftFootPivot.rotation.x).toBeCloseTo(-0.2);
   });
 
+  it("applies lateral bodyPositionX onto body.position.x", () => {
+    const rig = createLowPolyPerson();
+    const pose = createPersonPose();
+    pose.bodyPositionX = -0.26;
+
+    applyPersonPose(rig, pose, 1);
+
+    expect(rig.body.position.x).toBeCloseTo(-0.26);
+    expect(rig.body.rotation.x).toBe(0);
+  });
+
   it("resets every animated joint immediately to neutral", () => {
     const rig = createLowPolyPerson();
     rig.body.position.y = 0.4;

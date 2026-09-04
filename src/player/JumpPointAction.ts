@@ -60,7 +60,8 @@ export function writeJumpPointPose(
 
   const progress = Math.min(1, Math.max(0, extensionProgress));
   const eased = 1 - (1 - progress) ** 3;
-  pose.rightArmX = 2.2 * eased;
+  // Stage-point elevation: horizontal forward (π/2) + 45° up.
+  pose.rightArmX = (Math.PI / 2 + Math.PI / 4) * eased;
   pose.leftArmX = -0.72 * eased;
   pose.bodyY = 0.025 * eased;
   pose.legX = 0.19 * eased;

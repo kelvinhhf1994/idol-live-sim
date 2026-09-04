@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { ENABLE_YOUTUBE } from "../config/features";
 import { GENERIC_VENUE } from "../config/venue";
 import { combineMovementInputs, KeyboardInput } from "../input/KeyboardInput";
+import { BeatButton } from "../input/BeatButton";
 import { JumpPointButton } from "../input/JumpPointButton";
 import { MoshButton } from "../input/MoshButton";
 import { TwoStepButton } from "../input/TwoStepButton";
@@ -23,7 +24,7 @@ import {
 } from "../player/penlight";
 import { PlayerController } from "../player/PlayerController";
 import type { TwoStepPose } from "../player/TwoStepAction";
-import { createLowPolyPerson } from "../scene/createCharacter";
+import { createLowPolyPerson, DENIM_JEANS } from "../scene/createCharacter";
 import { createVenue, type VenueBuild } from "../scene/createVenue";
 import { ShowController } from "../show/ShowController";
 import { getFullscreenPresentation } from "../ui/fullscreenMode";
@@ -43,6 +44,8 @@ export interface AppSnapshot {
   moshWindmillTurns: number;
   penlightPose: PenlightPose;
   penlightColorId: string;
+  beatActive: boolean;
+  beatHeld: boolean;
   settings: GameSettings;
   twoStepActive: boolean;
   twoStepPhase: number;
@@ -82,6 +85,7 @@ export class App {
   private readonly moshButton: MoshButton;
   private readonly twoStepButton: TwoStepButton;
   private readonly jumpPointButton: JumpPointButton;
+  private readonly beatButton: BeatButton;
   private readonly player: PlayerController;
   private readonly cameraController: CameraController;
   private readonly showController: ShowController;
@@ -153,7 +157,7 @@ export class App {
     const playerRig = createLowPolyPerson({
       hairStyle: "short",
       glowStick: true,
-      palette: { top: 0xd6ff3f, bottom: 0x24202d, accent: 0xff2f7d },
+      palette: { top: 0xd6ff3f, bottom: DENIM_JEANS, accent: 0xff2f7d },
     });
     this.player = new PlayerController(playerRig, GENERIC_VENUE, this.venue.colliders);
     this.player.setPenlightState(loadPenlightState(window.localStorage));
@@ -183,6 +187,7 @@ export class App {
         if (this.entered) {
           this.twoStepButton.cancel();
           this.jumpPointButton.cancel();
+          this.beatButton.cancel();
           this.player.startMosh();
         }
       },
@@ -194,6 +199,7 @@ export class App {
         if (!this.entered) return;
         this.moshButton.cancel();
         this.jumpPointButton.cancel();
+        this.beatButton.cancel();
         this.player.startTwoStep();
         this.liftButton.setAttribute("aria-pressed", "false");
         this.jumpButton.disabled = false;
@@ -207,12 +213,25 @@ export class App {
         if (!this.entered) return;
         this.moshButton.cancel();
         this.twoStepButton.cancel();
+        this.beatButton.cancel();
         this.player.startJumpPoint();
         this.liftButton.setAttribute("aria-pressed", "false");
         this.jumpButton.disabled = false;
         this.moshButton.setDisabled(false);
       },
       () => this.player.releaseJumpPoint(),
+    );
+    this.beatButton = new BeatButton(
+      this.beatPenlightButton,
+      () => {
+        if (!this.entered) return;
+        this.player.startBeat();
+        this.syncPenlightChrome();
+      },
+      () => {
+        this.player.releaseBeat();
+        this.syncPenlightChrome();
+      },
     );
     this.cameraController = new CameraController(
       this.camera,
@@ -263,7 +282,6 @@ export class App {
     this.settingsPanelClose.addEventListener("click", () => this.setPanelOpen("settings", false));
     this.raisePenlightButton.addEventListener("click", () => this.handleCheerPose("raise"));
     this.wiperPenlightButton.addEventListener("click", () => this.handleCheerPose("wiper"));
-    this.beatPenlightButton.addEventListener("click", () => this.handleCheerPose("beat"));
     this.pointPenlightButton.addEventListener("click", () => this.handleCheerPose("point"));
     this.settingsReset.addEventListener("click", this.handleSettingsReset);
     this.penlightPanel.querySelectorAll("[data-close-panel]").forEach((el) => {
@@ -319,6 +337,8 @@ export class App {
       moshWindmillTurns: this.player.moshWindmillTurns,
       penlightPose: this.player.penlight.pose,
       penlightColorId: this.player.penlight.colorId,
+      beatActive: this.player.beatActive,
+      beatHeld: this.player.beatHeld,
       settings: { ...this.player.gameSettings },
       twoStepActive: this.player.twoStepActive,
       twoStepPhase: this.player.twoStepPhase,
@@ -382,6 +402,7 @@ export class App {
     this.moshButton.dispose();
     this.twoStepButton.dispose();
     this.jumpPointButton.dispose();
+    this.beatButton.dispose();
     this.cameraController.dispose();
     this.youtubePlayer?.dispose();
     this.timer.dispose();
@@ -461,8 +482,9 @@ export class App {
     this.setPanelOpen("settings", open);
   };
 
-  private handleCheerPose(pose: Exclude<PenlightPose, "idle">): void {
+  private handleCheerPose(pose: Exclude<PenlightPose, "idle" | "beat">): void {
     if (!this.entered) return;
+    this.beatButton.cancel();
     const next = this.player.togglePenlightPose(pose);
     savePenlightState(this.player.penlight, window.localStorage);
     this.syncPenlightChrome();
@@ -521,14 +543,18 @@ export class App {
 
   private syncPenlightChrome(): void {
     const { colorId, pose } = this.player.penlight;
+    const beating = this.player.beatActive || this.player.beatHeld;
     this.raisePenlightButton.setAttribute("aria-pressed", String(pose === "raise"));
     this.wiperPenlightButton.setAttribute("aria-pressed", String(pose === "wiper"));
-    this.beatPenlightButton.setAttribute("aria-pressed", String(pose === "beat"));
     this.pointPenlightButton.setAttribute("aria-pressed", String(pose === "point"));
     this.raisePenlightButton.classList.toggle("is-active", pose === "raise");
     this.wiperPenlightButton.classList.toggle("is-active", pose === "wiper");
-    this.beatPenlightButton.classList.toggle("is-active", pose === "beat");
     this.pointPenlightButton.classList.toggle("is-active", pose === "point");
+    // BeatButton owns pressed/active while the pointer is down; keep chrome in sync after release.
+    if (!beating) {
+      this.beatPenlightButton.setAttribute("aria-pressed", "false");
+      this.beatPenlightButton.classList.remove("is-active");
+    }
     this.penlightColorGrid.querySelectorAll<HTMLButtonElement>(".penlight-swatch").forEach((swatch) => {
       const selected = swatch.dataset.colorId === colorId;
       swatch.setAttribute("aria-selected", String(selected));

@@ -48,7 +48,11 @@ test("supports desktop movement, jumping, and mosh", async ({ page }) => {
   expect(Math.abs(moshMovementEnd - moshMovementStart)).toBeGreaterThan(walkingDistance * 1.12);
   await page.mouse.up();
   await expect(moshButton).toHaveAttribute("aria-pressed", "false");
-  await expect.poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().moshActive)).toBe(false);
+  await expect
+    .poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().moshActive), {
+      timeout: 10000,
+    })
+    .toBe(false);
 });
 
 test("moves with WASD only while the two-step button is held", async ({ page }) => {
@@ -79,12 +83,18 @@ test("moves with WASD only while the two-step button is held", async ({ page }) 
       leftSweep: leftSweep ? { ...leftSweep } : null,
     };
   });
-  expect(sweeps.rightSweep?.rightLegX).toBeLessThanOrEqual(0.7);
-  expect(sweeps.rightSweep?.rightLegZ).toBeLessThan(-0.2);
+  expect(sweeps.rightSweep?.rightLegX).toBeLessThanOrEqual(-0.25);
+  expect(sweeps.rightSweep?.rightLegX).toBeGreaterThanOrEqual(-0.4);
+  expect(sweeps.rightSweep?.rightLegZ).toBeLessThan(-0.25);
+  expect(sweeps.rightSweep?.rightKnee).toBeGreaterThanOrEqual(1.3);
   expect(sweeps.rightSweep?.bodyX).toBe(0);
-  expect(sweeps.rightSweep?.chestX).toBeLessThan(-0.18);
+  expect(sweeps.rightSweep?.bodyPositionX).toBeLessThan(-0.2);
+  expect(sweeps.leftSweep?.bodyPositionX).toBeGreaterThan(0.2);
+  expect(sweeps.rightSweep?.chestX).toBeLessThan(-0.35);
+  expect(sweeps.rightSweep?.leftArmZ).toBeLessThan(-Math.PI / 2);
   expect(sweeps.leftSweep?.leftLegX).toBeCloseTo(sweeps.rightSweep?.rightLegX ?? 0);
   expect(sweeps.leftSweep?.leftLegZ).toBeCloseTo(-(sweeps.rightSweep?.rightLegZ ?? 0));
+  expect(sweeps.leftSweep?.rightArmZ).toBeCloseTo(-(sweeps.rightSweep?.leftArmZ ?? 0));
 
   await page.evaluate(() => window.__liveHouseDebug?.placePlayer(0, 8));
   const startZ = (await page.evaluate(() => window.__liveHouseDebug?.snapshot().player.z)) ?? 0;

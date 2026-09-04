@@ -110,6 +110,32 @@ describe("player lift", () => {
     expect(player.supporterVisible).toBe(false);
   });
 
+  it("hides lifter NPCs within ~0.2s of cancel instead of waiting for the old ~1s descent", () => {
+    const player = createPlayer();
+    player.setLiftActive(true);
+    updateFrames(player);
+
+    player.setLiftActive(false);
+    // exitDuration is 0.2s; 15 frames at 60 FPS ≈ 0.25s
+    updateFrames(player, 15);
+
+    expect(player.liftActive).toBe(false);
+    expect(player.supporterVisible).toBe(false);
+    expect(player.lift.group.visible).toBe(false);
+    expect(player.lift.group.scale.x).toBe(1);
+  });
+
+  it("lands the player near ground within ~0.25s after cancel", () => {
+    const player = createPlayer();
+    player.setLiftActive(true);
+    updateFrames(player);
+
+    player.setLiftActive(false);
+    updateFrames(player, 15);
+
+    expect(player.position.y).toBeCloseTo(GENERIC_VENUE.spawn.y, 2);
+  });
+
   it("moves the full formation at exactly 2.00 times ordinary speed", () => {
     const player = createPlayer();
     player.setLiftActive(true);
@@ -153,11 +179,11 @@ describe("player lift", () => {
     expect(rig.rightKnee.rotation.x).toBeCloseTo(-0.3);
     expect(rig.leftFootPivot.rotation.x).toBeCloseTo(0.15);
     expect(rig.rightFootPivot.rotation.x).toBeCloseTo(0.15);
-    // Swapped roles: left abducts to the side, right points forward-up.
+    // Swapped roles: left abducts to the side, right points stage-up at ~45°.
     expect(Math.abs(rig.leftArm.rotation.z)).toBeGreaterThan(1);
     expect(rig.leftArm.rotation.z).toBeCloseTo(-1.35, 5);
     expect(rig.rightArm.rotation.x).toBeGreaterThan(1.3);
-    expect(rig.rightArm.rotation.x).toBeCloseTo(Math.PI / 2, 5);
+    expect(rig.rightArm.rotation.x).toBeCloseTo(Math.PI / 2 + Math.PI / 4, 5);
     expect(rig.rightArm.rotation.z).toBeCloseTo(-0.12, 5);
   });
 
@@ -167,14 +193,25 @@ describe("player lift", () => {
     player.setLiftActive(true);
     updateFrames(player);
 
-    // Previously left was forward (π/2) and right was side (+1.35); now mirrored-swapped.
+    // Left abducts; right aims stage-forward-up (π/2 + π/4).
     expect(rig.leftArm.rotation.x).toBeCloseTo(0.12, 5);
     expect(rig.leftArm.rotation.z).toBeCloseTo(-1.35, 5);
-    expect(rig.rightArm.rotation.x).toBeCloseTo(Math.PI / 2, 5);
+    expect(rig.rightArm.rotation.x).toBeCloseTo(Math.PI / 2 + Math.PI / 4, 5);
     expect(rig.rightArm.rotation.y).toBeCloseTo(0, 5);
     expect(rig.rightArm.rotation.z).toBeCloseTo(-0.12, 5);
     expect(rig.leftForearm.rotation.x).toBeCloseTo(0, 5);
     expect(rig.rightForearm.rotation.x).toBeCloseTo(0, 5);
+  });
+
+  it("keeps the lifted player's glow stick in the stage-point pose", () => {
+    const rig = createLowPolyPerson({ glowStick: true });
+    const player = new PlayerController(rig, GENERIC_VENUE, []);
+    player.setLiftActive(true);
+    updateFrames(player);
+
+    expect(rig.glowStick).not.toBeNull();
+    expect(rig.glowStick!.rotation.x).toBeCloseTo(Math.PI, 5);
+    expect(rig.glowStick!.visible).toBe(true);
   });
 
   it("keeps supporter arms fixed while their legs run", () => {

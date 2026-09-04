@@ -56,7 +56,8 @@ describe("writeJumpPointPose", () => {
     writeJumpPointPose(1, false, pose);
 
     expect(pose.rightArmX).toBeGreaterThan(partialExtension);
-    expect(pose.rightArmX).toBeGreaterThan(Math.PI / 2);
+    // Full extension matches stage-point elevation (π/2 + π/4).
+    expect(pose.rightArmX).toBeCloseTo(Math.PI / 2 + Math.PI / 4, 5);
     expect(Math.sin(pose.rightArmX)).toBeGreaterThan(0);
     expect(Math.cos(pose.rightArmX)).toBeLessThan(0);
     expect(pose.leftArmX).toBeLessThan(0);

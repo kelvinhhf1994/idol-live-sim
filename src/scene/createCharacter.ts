@@ -89,11 +89,16 @@ const geometries = {
   shadow: new THREE.CircleGeometry(0.4, 16),
 };
 
+/** Classic indigo denim — readable against dark live-house floors. */
+export const DENIM_JEANS = 0x2c5282;
+/** Off-white canvas sneakers for foot silhouette contrast on black stage. */
+export const CANVAS_SNEAKER = 0xf0ece4;
+
 const defaultPalette: CharacterPalette = {
   skin: 0xf1ad85,
   hair: 0x211923,
   top: 0xe8e0d4,
-  bottom: 0x26202e,
+  bottom: DENIM_JEANS,
   accent: 0xff397d,
 };
 
@@ -106,7 +111,7 @@ export function createLowPolyPerson(options: CharacterOptions = {}): PersonRig {
     bottom: makeMaterial(palette.bottom),
     accent: makeMaterial(palette.accent, palette.accent),
     eye: makeMaterial(0x171119),
-    shoe: makeMaterial(0x100d14),
+    shoe: makeMaterial(CANVAS_SNEAKER),
   };
 
   const group = new THREE.Group();

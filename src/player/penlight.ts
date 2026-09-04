@@ -68,7 +68,10 @@ export function loadPenlightState(storage?: PenlightStorageLike | null): Penligh
   try {
     const raw = storage.getItem(PENLIGHT_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_PENLIGHT_STATE };
-    return normalizePenlightState(JSON.parse(raw) as unknown);
+    const loaded = normalizePenlightState(JSON.parse(raw) as unknown);
+    // Beat is hold-to-play; never restore it as a latched pose.
+    if (loaded.pose === "beat") return { colorId: loaded.colorId, pose: "idle" };
+    return loaded;
   } catch {
     return { ...DEFAULT_PENLIGHT_STATE };
   }
@@ -81,7 +84,12 @@ export function savePenlightState(
   const normalized = normalizePenlightState(state);
   if (!storage) return normalized;
   try {
-    storage.setItem(PENLIGHT_STORAGE_KEY, JSON.stringify(normalized));
+    // Persist idle instead of beat so a refresh does not latch maeuchi.
+    const toPersist =
+      normalized.pose === "beat"
+        ? { colorId: normalized.colorId, pose: "idle" as const }
+        : normalized;
+    storage.setItem(PENLIGHT_STORAGE_KEY, JSON.stringify(toPersist));
   } catch {
     // Ignore quota / private-mode failures; in-memory state still applies.
   }
@@ -133,10 +141,48 @@ export const PENLIGHT_STICK_POINT: PenlightStickPose = {
   rotation: { x: Math.PI, y: 0, z: 0.08 },
 };
 
+/**
+ * Maeuchi / kizami beat joints (from demo video frame analysis).
+ * Ready: upper arm tucked beside ribs, elbow deep-folded, stick nearly upright
+ * with a slight forward lean. Peak: elbows stay planted ("固定手肘") while the
+ * forearm snaps forward and the shaft tips toward the stage.
+ */
+export const BEAT_ARM_READY = {
+  rightShoulderX: 0.16,
+  rightShoulderY: 0.02,
+  rightShoulderZ: -0.16,
+  rightElbow: 2.0,
+} as const;
+
+/** Peak thrust deltas layered onto BEAT_ARM_READY via beatPulse. */
+export const BEAT_ARM_THRUST = {
+  rightShoulderX: 0.52,
+  rightElbow: 0.7,
+} as const;
+
+/** Rest angle is vertical 90° (0 rad offset). */
+export const BEAT_STICK_REST_LEAN = 0;
+
+/** Peak thrust tip is forward 45° (-π/4 rad offset). */
+export const BEAT_STICK_THRUST_TIP = -Math.PI / 4;
+
+/**
+ * Chest beat (maeuchi / kizami): shaft upright in front of the chest (vertical 90°).
+ */
+export const PENLIGHT_STICK_BEAT: PenlightStickPose = {
+  position: { x: 0.01, y: 0.03, z: 0.025 },
+  rotation: {
+    x: -(BEAT_ARM_READY.rightShoulderX + BEAT_ARM_READY.rightElbow),
+    y: 0.04,
+    z: 0.08,
+  },
+};
+
 /** Static stick pose lookup (wiper/beat map to their phase-0 bases). */
 export function stickPoseFor(pose: PenlightPose): PenlightStickPose {
   if (pose === "raise" || pose === "wiper") return PENLIGHT_STICK_RAISE;
-  if (pose === "point" || pose === "beat") return PENLIGHT_STICK_POINT;
+  if (pose === "point") return PENLIGHT_STICK_POINT;
+  if (pose === "beat") return PENLIGHT_STICK_BEAT;
   return PENLIGHT_STICK_IDLE;
 }
 
@@ -167,13 +213,85 @@ export const PENLIGHT_ARM_POINT: PenlightArmPose = {
   rightElbow: 0,
 };
 
-/** Asymmetric thrust / bounce envelope for maeuchi (forward beat). */
+/** Fast snap window as a fraction of one beat cycle (~0.24s at default tempo). */
+export const BEAT_ATTACK = 0.2;
+/** Brief hold at peak ("稍為停一下才回後", ~0.12s at default tempo). */
+export const BEAT_HOLD = 0.1;
+/** Point where the slow retract reaches 100° (~0.85 cycle ≈ 1.0s at default tempo). */
+export const BEAT_RETRACT_END = 0.85;
+
+/**
+ * Angles in degrees relative to horizontal ground (90° = vertical up, 45° = forward-up, 100° = tilted back 10°).
+ */
+export const BEAT_ANGLE_VERTICAL = 90;
+export const BEAT_ANGLE_PEAK = 45;
+export const BEAT_ANGLE_RETRACT = 100;
+
+/**
+ * Trajectory for the stick pitch angle:
+ * - Starts at vertical 90° on the first cycle (or 100° on repeated beats).
+ * - Fast snap forward to 45°.
+ * - Holds at 45° briefly.
+ * - Smoothly retracts back to 100°.
+ * - If single tap released, gently relaxes from 100° back to vertical 90°.
+ */
+export function getBeatStickAngleDeg(
+  phase: number,
+  isFirstCycle = true,
+  isHeld = false,
+): number {
+  const startDeg = isFirstCycle ? BEAT_ANGLE_VERTICAL : BEAT_ANGLE_RETRACT;
+  const peakDeg = BEAT_ANGLE_PEAK;
+  const cockedDeg = BEAT_ANGLE_RETRACT;
+  const endDeg = isHeld ? BEAT_ANGLE_RETRACT : BEAT_ANGLE_VERTICAL;
+
+  const u = phase - Math.floor(phase);
+  if (u < BEAT_ATTACK) {
+    const t = u / BEAT_ATTACK;
+    const ease = 1 - Math.pow(1 - t, 3);
+    return startDeg + (peakDeg - startDeg) * ease;
+  }
+  if (u < BEAT_ATTACK + BEAT_HOLD) {
+    return peakDeg;
+  }
+  if (u < BEAT_RETRACT_END) {
+    const t = (u - (BEAT_ATTACK + BEAT_HOLD)) / (BEAT_RETRACT_END - (BEAT_ATTACK + BEAT_HOLD));
+    const ease = 0.5 * (1 - Math.cos(t * Math.PI));
+    return peakDeg + (cockedDeg - peakDeg) * ease;
+  }
+  const t = (u - BEAT_RETRACT_END) / (1.0 - BEAT_RETRACT_END);
+  const ease = 0.5 * (1 - Math.cos(t * Math.PI));
+  return cockedDeg + (endDeg - cockedDeg) * ease;
+}
+
+/**
+ * Character-space pitch offset around +X for a target stick angle in degrees.
+ * 90° (vertical) -> 0 rad
+ * 45° (forward) -> -45° (-π/4 rad)
+ * 100° (backward) -> +10° (+10*π/180 rad)
+ */
+export function beatPitchOffsetForDeg(deg: number): number {
+  return ((deg - 90) * Math.PI) / 180;
+}
+
+/**
+ * Asymmetric thrust envelope for maeuchi arm extension.
+ * Fast attack (~20%) snaps to peak, brief hold (~10%), slow smooth cosine retract to ready pose.
+ */
 export function beatPulse(phase: number): number {
   const u = phase - Math.floor(phase);
-  if (u < 0.28) {
-    return 1 - Math.pow(1 - u / 0.28, 3);
+  if (u < BEAT_ATTACK) {
+    // Cubic ease-out: explosive push reaches 1.0 by the attack end.
+    return 1 - Math.pow(1 - u / BEAT_ATTACK, 3);
   }
-  return 1 - Math.pow((u - 0.28) / 0.72, 2);
+  if (u < BEAT_ATTACK + BEAT_HOLD) {
+    return 1;
+  }
+  if (u < BEAT_RETRACT_END) {
+    const t = (u - (BEAT_ATTACK + BEAT_HOLD)) / (BEAT_RETRACT_END - (BEAT_ATTACK + BEAT_HOLD));
+    return 0.5 * (1 + Math.cos(t * Math.PI));
+  }
+  return 0;
 }
 
 /**
@@ -193,20 +311,36 @@ export function getDynamicArmPose(pose: PenlightPose, phase: number): PenlightAr
     };
   }
   if (pose === "beat") {
-    // Maeuchi: chest-to-forehead thrust with elastic bounce-back.
+    // Fixed-elbow kizami: upper arm stays planted beside the ribs; pulse opens
+    // the forearm forward then slowly folds back to the ready pose.
     const pulse = beatPulse(phase);
     return {
-      rightShoulderX: Math.PI / 2 + 0.35 + pulse * 0.28,
-      rightShoulderY: 0.04,
-      rightShoulderZ: -0.08,
-      rightElbow: 0.55 + (0.18 - 0.55) * pulse,
+      rightShoulderX: BEAT_ARM_READY.rightShoulderX + pulse * BEAT_ARM_THRUST.rightShoulderX,
+      rightShoulderY: BEAT_ARM_READY.rightShoulderY,
+      rightShoulderZ: BEAT_ARM_READY.rightShoulderZ,
+      rightElbow:
+        BEAT_ARM_READY.rightElbow +
+        (BEAT_ARM_THRUST.rightElbow - BEAT_ARM_READY.rightElbow) * pulse,
     };
   }
   return null;
 }
 
+/**
+ * Local stick X that cancels shoulder+elbow fold so the shaft points world +Y.
+ * Forward tap adds a positive snap that springs back with the pulse envelope.
+ */
+export function beatStickUprightX(rightShoulderX: number, rightElbow: number): number {
+  return -(rightShoulderX + rightElbow);
+}
+
 /** Dynamic stick pose; lag / snap accents follow the arm cycle. */
-export function getDynamicStickPose(pose: PenlightPose, phase: number): PenlightStickPose {
+export function getDynamicStickPose(
+  pose: PenlightPose,
+  phase: number,
+  isFirstCycle: boolean = true,
+  isHeld: boolean = false,
+): PenlightStickPose {
   if (pose === "wiper") {
     const base = PENLIGHT_STICK_RAISE;
     return {
@@ -220,13 +354,23 @@ export function getDynamicStickPose(pose: PenlightPose, phase: number): Penlight
   }
   if (pose === "beat") {
     const pulse = beatPulse(phase);
-    const base = PENLIGHT_STICK_POINT;
+    const arm = getDynamicArmPose("beat", phase)!;
+    const uprightX = beatStickUprightX(arm.rightShoulderX, arm.rightElbow);
+    const angleDeg = getBeatStickAngleDeg(phase, isFirstCycle, isHeld);
+    const pitchOffset = beatPitchOffsetForDeg(angleDeg);
+    const base = PENLIGHT_STICK_BEAT;
     return {
-      position: { ...base.position },
+      position: {
+        x: base.position.x,
+        // Drop + forward reach as the forearm snaps out and thrusts forward.
+        y: base.position.y - pulse * 0.015,
+        z: base.position.z + pulse * 0.045,
+      },
       rotation: {
-        x: base.rotation.x + pulse * 0.15,
+        // Exact angle matching user spec: 90° vertical -> 45° forward -> 100° retract
+        x: uprightX + pitchOffset,
         y: base.rotation.y,
-        z: base.rotation.z,
+        z: base.rotation.z - pulse * 0.06,
       },
     };
   }

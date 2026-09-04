@@ -14,6 +14,7 @@ import {
   JumpPointAction,
   writeJumpPointPose,
 } from "./JumpPointAction";
+import { BeatAction } from "./BeatAction";
 import {
   createMoshJointPose,
   MoshAction,
@@ -37,8 +38,12 @@ import {
   getDynamicStickPose,
   getPenlightColor,
   normalizePenlightState,
+  PENLIGHT_STICK_IDLE,
+  PENLIGHT_STICK_POINT,
+  stickPoseFor,
   type PenlightPose,
   type PenlightState,
+  type PenlightStickPose,
 } from "./penlight";
 
 export interface MovementInput {
@@ -123,7 +128,7 @@ export class PlayerController {
   private settings: GameSettings = { ...DEFAULT_GAME_SETTINGS };
   private penlightState: PenlightState = { ...DEFAULT_PENLIGHT_STATE };
   private wiperPhase = 0;
-  private beatPhase = 0;
+  private readonly beat = new BeatAction();
 
   constructor(
     private readonly rig: PersonRig,
@@ -231,6 +236,8 @@ export class PlayerController {
     if (this.grounded && this.jumpPoint.updateGrounded(dt)) this.beginJump();
     this.mosh.update(dt);
     if (this.twoStepAnimating) this.twoStep.update(dt);
+    this.beat.update(dt, this.settings.beatSpeed);
+    this.syncBeatPenlightPose();
     this.animate(isMoving, dt);
     if (this.lift.isSupporting) this.lift.applyPlayerPose();
     this.syncTransform();
@@ -283,24 +290,77 @@ export class PlayerController {
   }
 
   setPenlightState(state: PenlightState): void {
-    this.penlightState = normalizePenlightState(state);
+    const normalized = normalizePenlightState(state);
+    // Non-beat pose writes cancel hold-to-beat; beat writes come from startBeat.
+    if (normalized.pose !== "beat") this.beat.cancel();
+    this.penlightState = normalized;
     this.applyPenlightVisuals();
   }
 
   setPenlightColor(colorId: string): void {
-    this.setPenlightState({ ...this.penlightState, colorId });
+    // Color picks must not cancel an in-progress hold-to-beat.
+    this.penlightState = normalizePenlightState({ ...this.penlightState, colorId });
+    this.applyPenlightVisuals();
   }
 
-  /** Toggle cheer pose; passing the active pose clears it back to idle. */
+  /** Toggle cheer pose; passing the active pose clears it back to idle. Beat uses startBeat. */
   togglePenlightPose(pose: Exclude<PenlightPose, "idle">): PenlightPose {
+    if (pose === "beat") {
+      if (this.beat.isActive) {
+        this.cancelBeat();
+        return this.penlightState.pose;
+      }
+      this.startBeat();
+      return "beat";
+    }
+    this.beat.cancel();
     const next = this.penlightState.pose === pose ? "idle" : pose;
     this.setPenlightState({ ...this.penlightState, pose: next });
     return next;
   }
 
+  get beatActive(): boolean {
+    return this.beat.isActive;
+  }
+
+  get beatHeld(): boolean {
+    return this.beat.isHeld;
+  }
+
+  startBeat(): void {
+    this.beat.start();
+    this.penlightState = { ...this.penlightState, pose: "beat" };
+    this.applyPenlightStickTransform();
+  }
+
+  releaseBeat(): void {
+    this.beat.release();
+  }
+
+  cancelBeat(): void {
+    this.beat.cancel();
+    if (this.penlightState.pose === "beat") {
+      this.penlightState = { ...this.penlightState, pose: "idle" };
+      this.applyPenlightStickTransform();
+    }
+  }
+
+  private syncBeatPenlightPose(): void {
+    if (this.beat.isActive) {
+      if (this.penlightState.pose !== "beat") {
+        this.penlightState = { ...this.penlightState, pose: "beat" };
+      }
+      return;
+    }
+    if (this.penlightState.pose === "beat") {
+      this.penlightState = { ...this.penlightState, pose: "idle" };
+      this.applyPenlightStickTransform();
+    }
+  }
+
   private get penlightAnimPhase(): number {
     if (this.penlightState.pose === "wiper") return this.wiperPhase;
-    if (this.penlightState.pose === "beat") return this.beatPhase;
+    if (this.beat.isActive || this.penlightState.pose === "beat") return this.beat.phase;
     return 0;
   }
 
@@ -363,6 +423,7 @@ export class PlayerController {
       this.mosh.cancel();
       this.twoStep.release();
       this.jumpPoint.cancel();
+      this.cancelBeat();
       this.verticalVelocity = 0;
       this.grounded = false;
     }
@@ -372,6 +433,7 @@ export class PlayerController {
   startMosh(): void {
     this.twoStep.release();
     this.jumpPoint.cancel();
+    this.cancelBeat();
     if (this.lift.isSupporting) return;
     this.mosh.start();
   }
@@ -383,6 +445,7 @@ export class PlayerController {
   startTwoStep(): void {
     this.mosh.cancel();
     this.jumpPoint.cancel();
+    this.cancelBeat();
     if (this.lift.isActive) this.lift.setActive(false);
     this.twoStep.start();
   }
@@ -394,6 +457,7 @@ export class PlayerController {
   startJumpPoint(): boolean {
     this.mosh.cancel();
     this.twoStep.release();
+    this.cancelBeat();
     if (this.lift.isActive) this.lift.setActive(false);
     const started = this.jumpPoint.press(this.grounded && !this.lift.isSupporting);
     if (started) this.beginJump();
@@ -431,10 +495,9 @@ export class PlayerController {
   private animate(isMoving: boolean, dt: number): void {
     if (this.penlightState.pose === "wiper") {
       this.wiperPhase += dt * Math.PI * 2 * (1.0 * this.settings.wiperSpeed);
-    } else if (this.penlightState.pose === "beat") {
-      this.beatPhase += dt * (2.0 * this.settings.beatSpeed);
     }
-    if (this.penlightPoseActive) this.applyPenlightStickTransform();
+    // Always refresh stick grip/pose so actions never leave the shaft hidden or stale.
+    this.applyPenlightStickTransform();
 
     const walkSwing = isMoving ? Math.sin(this.walkTime) * 0.55 : 0;
     const moshActive = this.mosh.isActive && !this.lift.isSupporting;
@@ -475,10 +538,36 @@ export class PlayerController {
     }
   }
 
+  /** Resolve stick local pose from action priority (lift/jump-point > cheer > idle). */
+  private resolveStickPose(): PenlightStickPose {
+    if (this.lift.isSupporting || this.jumpPoint.isActive || this.jumpPoint.held) {
+      return PENLIGHT_STICK_POINT;
+    }
+    if (this.beat.isActive || this.penlightState.pose === "beat") {
+      return getDynamicStickPose(
+        "beat",
+        this.penlightAnimPhase,
+        this.beat.isFirstCycle,
+        this.beat.isHeld,
+      );
+    }
+    if (this.penlightState.pose === "wiper" && !this.penlightSuppressed) {
+      return getDynamicStickPose("wiper", this.penlightAnimPhase);
+    }
+    if (
+      (this.penlightState.pose === "raise" || this.penlightState.pose === "point") &&
+      !this.penlightSuppressed
+    ) {
+      return stickPoseFor(this.penlightState.pose);
+    }
+    return PENLIGHT_STICK_IDLE;
+  }
+
   private applyPenlightStickTransform(): void {
     const stick = this.rig.glowStick;
     if (!stick) return;
-    const stickPose = getDynamicStickPose(this.penlightState.pose, this.penlightAnimPhase);
+    stick.visible = true;
+    const stickPose = this.resolveStickPose();
     stick.position.set(stickPose.position.x, stickPose.position.y, stickPose.position.z);
     stick.rotation.set(stickPose.rotation.x, stickPose.rotation.y, stickPose.rotation.z);
   }
@@ -512,12 +601,15 @@ export class PlayerController {
     const target = this.personPose;
     resetPersonPose(target);
     target.bodyY = source.bodyY;
+    target.bodyPositionX = source.bodyPositionX;
     target.pelvisY = source.pelvisY;
     target.pelvisTwist = source.bodyYaw;
     target.pelvisZ = source.bodyZ;
     target.chestX = source.chestX;
     target.leftShoulderX = source.leftArmX;
     target.rightShoulderX = source.rightArmX;
+    target.leftShoulderZ = source.leftArmZ;
+    target.rightShoulderZ = source.rightArmZ;
     target.leftElbow = source.leftElbow;
     target.rightElbow = source.rightElbow;
     target.leftHipX = source.leftLegX;
@@ -614,6 +706,7 @@ export class PlayerController {
   }
 
   private clearV2TwoStepChannels(blend: number): void {
+    this.rig.body.position.x = THREE.MathUtils.lerp(this.rig.body.position.x, 0, blend);
     this.rig.pelvis.position.y = THREE.MathUtils.lerp(
       this.rig.pelvis.position.y,
       0.64,

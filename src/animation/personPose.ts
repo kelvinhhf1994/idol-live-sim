@@ -3,6 +3,8 @@ import type { PersonRig } from "../scene/createCharacter";
 
 export interface PersonPose {
   bodyY: number;
+  /** Lateral body translation (character-local X). Distinct from bodyX rotation. */
+  bodyPositionX: number;
   bodyX: number;
   bodyYaw: number;
   bodyZ: number;
@@ -42,6 +44,7 @@ export type PersonPoseLayer = Partial<PersonPose>;
 
 const neutralPose: Readonly<PersonPose> = {
   bodyY: 0,
+  bodyPositionX: 0,
   bodyX: 0,
   bodyYaw: 0,
   bodyZ: 0,
@@ -94,6 +97,7 @@ export function applyPoseLayer(pose: PersonPose, layer: PersonPoseLayer): void {
 }
 
 export function clampPersonPose(pose: PersonPose): void {
+  pose.bodyPositionX = clamp(pose.bodyPositionX, -0.5, 0.5);
   pose.bodyX = clamp(pose.bodyX, -1.5, 1.5);
   pose.bodyZ = clamp(pose.bodyZ, -1.5, 1.5);
   pose.pelvisX = clamp(pose.pelvisX, -0.65, 0.65);
@@ -110,8 +114,9 @@ export function clampPersonPose(pose: PersonPose): void {
   pose.rightShoulderX = clamp(pose.rightShoulderX, -Math.PI * 8, Math.PI * 8);
   pose.leftShoulderY = clamp(pose.leftShoulderY, -1.4, 1.4);
   pose.rightShoulderY = clamp(pose.rightShoulderY, -1.4, 1.4);
-  pose.leftShoulderZ = clamp(pose.leftShoulderZ, -1.6, 1.6);
-  pose.rightShoulderZ = clamp(pose.rightShoulderZ, -1.6, 1.6);
+  // Allow abduction past 90° for hardcore 2-step arm flares.
+  pose.leftShoulderZ = clamp(pose.leftShoulderZ, -1.85, 1.85);
+  pose.rightShoulderZ = clamp(pose.rightShoulderZ, -1.85, 1.85);
   pose.leftElbow = clamp(pose.leftElbow, 0, 2.4);
   pose.rightElbow = clamp(pose.rightElbow, 0, 2.4);
   pose.leftHipX = clamp(pose.leftHipX, -1.4, 1.4);
@@ -132,6 +137,7 @@ export function applyPersonPose(rig: PersonRig, pose: PersonPose, blend: number)
   clampPersonPose(pose);
   const amount = clamp(blend, 0, 1);
   rig.body.position.y = mix(rig.body.position.y, pose.bodyY, amount);
+  rig.body.position.x = mix(rig.body.position.x, pose.bodyPositionX, amount);
   setRotation(rig.body, pose.bodyX, pose.bodyYaw, pose.bodyZ, amount);
   rig.pelvis.position.y = mix(rig.pelvis.position.y, 0.64 + pose.pelvisY, amount);
   setRotation(rig.pelvis, pose.pelvisX, pose.pelvisTwist, pose.pelvisZ, amount);

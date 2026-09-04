@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   armPoseFor,
+  BEAT_ARM_READY,
+  BEAT_ARM_THRUST,
+  BEAT_ATTACK,
+  BEAT_HOLD,
+  BEAT_RETRACT_END,
+  BEAT_ANGLE_VERTICAL,
+  BEAT_ANGLE_PEAK,
+  BEAT_ANGLE_RETRACT,
+  beatPitchOffsetForDeg,
   beatPulse,
+  getBeatStickAngleDeg,
   DEFAULT_PENLIGHT_STATE,
   getDynamicArmPose,
   getDynamicStickPose,
@@ -10,7 +20,6 @@ import {
   loadPenlightState,
   normalizePenlightState,
   PENLIGHT_COLORS,
-  PENLIGHT_STICK_POINT,
   PENLIGHT_STICK_RAISE,
   PENLIGHT_STORAGE_KEY,
   savePenlightState,
@@ -81,21 +90,88 @@ describe("penlight", () => {
     expect(stick.rotation.z).toBeCloseTo(PENLIGHT_STICK_RAISE.rotation.z + 0.15, 5);
   });
 
-  it("thrusts the beat arm forward then bounces back on the pulse envelope", () => {
+  it("beats with fast-forward, brief peak hold, then slow-return envelope", () => {
     expect(beatPulse(0)).toBeCloseTo(0, 5);
-    expect(beatPulse(0.28)).toBeCloseTo(1, 5);
+    // Peak at the end of the sharp attack window.
+    expect(beatPulse(BEAT_ATTACK)).toBeCloseTo(1, 5);
+    // Hold plateau keeps full extension ("稍為停一下").
+    expect(beatPulse(BEAT_ATTACK + BEAT_HOLD * 0.5)).toBeCloseTo(1, 5);
+    // Mid-return (midpoint of 0.30 to 0.85 retract is 0.575) smoothly reaches half extension.
+    expect(beatPulse(0.575)).toBeCloseTo(0.5, 5);
+    expect(beatPulse(0.95)).toBeLessThan(0.05);
     expect(beatPulse(1)).toBeCloseTo(0, 5);
+    // Snappy attack reaches near-peak early in the snap window.
+    expect(beatPulse(BEAT_ATTACK * 0.75)).toBeGreaterThan(0.85);
+  });
 
-    const cocked = getDynamicArmPose("beat", 0)!;
-    const peak = getDynamicArmPose("beat", 0.28)!;
-    expect(peak.rightShoulderX).toBeGreaterThan(cocked.rightShoulderX);
-    expect(peak.rightElbow).toBeLessThan(cocked.rightElbow);
-    expect(peak.rightShoulderY).toBeCloseTo(0.04, 5);
-    expect(peak.rightShoulderZ).toBeCloseTo(-0.08, 5);
+  it("animates the stick trajectory: vertical 90° -> forward 45° -> retract to 100°", () => {
+    // First strike: starts vertical 90°.
+    expect(getBeatStickAngleDeg(0, true, false)).toBeCloseTo(BEAT_ANGLE_VERTICAL, 5);
+    // Peak thrust: reaches forward 45°.
+    expect(getBeatStickAngleDeg(BEAT_ATTACK, true, false)).toBeCloseTo(BEAT_ANGLE_PEAK, 5);
+    // Peak hold window: maintains 45°.
+    expect(getBeatStickAngleDeg(BEAT_ATTACK + BEAT_HOLD * 0.5, true, false)).toBeCloseTo(BEAT_ANGLE_PEAK, 5);
+    // Retract window: smoothly reaches 100° at BEAT_RETRACT_END (~0.85).
+    expect(getBeatStickAngleDeg(BEAT_RETRACT_END, true, false)).toBeCloseTo(BEAT_ANGLE_RETRACT, 5);
+    // Released single tap: smoothly returns to vertical 90° at phase 1.0.
+    expect(getBeatStickAngleDeg(1.0, true, false)).toBeCloseTo(BEAT_ANGLE_VERTICAL, 5);
 
-    const stick = getDynamicStickPose("beat", 0.28);
-    expect(stick.rotation.x).toBeCloseTo(PENLIGHT_STICK_POINT.rotation.x + 0.15, 5);
-    expect(stickPoseFor("beat")).toEqual(PENLIGHT_STICK_POINT);
+    // Repeated beats while held: strike from 100° cocked position to 45° and back to 100°.
+    expect(getBeatStickAngleDeg(0, false, true)).toBeCloseTo(BEAT_ANGLE_RETRACT, 5);
+    expect(getBeatStickAngleDeg(BEAT_ATTACK, false, true)).toBeCloseTo(BEAT_ANGLE_PEAK, 5);
+    expect(getBeatStickAngleDeg(BEAT_RETRACT_END, false, true)).toBeCloseTo(BEAT_ANGLE_RETRACT, 5);
+    expect(getBeatStickAngleDeg(1.0, false, true)).toBeCloseTo(BEAT_ANGLE_RETRACT, 5);
+
+    // Pitch offsets in character space (forward is -Z):
+    expect(beatPitchOffsetForDeg(90)).toBeCloseTo(0, 5);
+    expect(beatPitchOffsetForDeg(45)).toBeCloseTo(-Math.PI / 4, 5);
+    expect(beatPitchOffsetForDeg(100)).toBeCloseTo((10 * Math.PI) / 180, 5);
+  });
+
+  it("beats the stick at chest with a dropped upper arm and deep elbow fold", () => {
+    const ready = getDynamicArmPose("beat", 0)!;
+    const peak = getDynamicArmPose("beat", BEAT_ATTACK)!;
+
+    // Upper arm stays down (not raised overhead / above π/2).
+    expect(ready.rightShoulderX).toBeLessThan(Math.PI / 2);
+    expect(peak.rightShoulderX).toBeLessThan(Math.PI / 2);
+    expect(ready.rightShoulderX).toBeCloseTo(BEAT_ARM_READY.rightShoulderX, 5);
+    expect(peak.rightShoulderX).toBeCloseTo(
+      BEAT_ARM_READY.rightShoulderX + BEAT_ARM_THRUST.rightShoulderX,
+      5,
+    );
+    expect(ready.rightShoulderY).toBeCloseTo(BEAT_ARM_READY.rightShoulderY, 5);
+    expect(peak.rightShoulderY).toBeCloseTo(BEAT_ARM_READY.rightShoulderY, 5);
+    // Elbows stay planted beside the ribs ("固定手肘").
+    expect(ready.rightShoulderZ).toBeCloseTo(BEAT_ARM_READY.rightShoulderZ, 5);
+    expect(peak.rightShoulderZ).toBeCloseTo(BEAT_ARM_READY.rightShoulderZ, 5);
+    // Deep elbow fold (> right angle) keeps the stick in front of the chest;
+    // strike opens the forearm forward then slowly folds back.
+    expect(ready.rightElbow).toBeGreaterThan(Math.PI / 2);
+    expect(ready.rightElbow).toBeCloseTo(BEAT_ARM_READY.rightElbow, 5);
+    expect(peak.rightElbow).toBeCloseTo(BEAT_ARM_THRUST.rightElbow, 5);
+    expect(peak.rightElbow).toBeLessThan(ready.rightElbow);
+
+    const stickReady = getDynamicStickPose("beat", 0, true, false);
+    const stickPeak = getDynamicStickPose("beat", BEAT_ATTACK, true, false);
+    const stickRetract = getDynamicStickPose("beat", BEAT_RETRACT_END, true, false);
+
+    // Rest: shaft vertical 90° (character-space pitch offset = 0).
+    expect(stickReady.rotation.x).toBeCloseTo(
+      -(ready.rightShoulderX + ready.rightElbow),
+      5,
+    );
+    // Peak: shaft tips forward 45° (character-space pitch offset = -π/4).
+    expect(stickPeak.rotation.x).toBeCloseTo(
+      -(peak.rightShoulderX + peak.rightElbow) - Math.PI / 4,
+      5,
+    );
+    // Retract: shaft tilts back to 100° (character-space pitch offset = +10°).
+    expect(stickRetract.rotation.x).toBeCloseTo(
+      -(ready.rightShoulderX + ready.rightElbow) + (10 * Math.PI) / 180,
+      5,
+    );
+    expect(stickPoseFor("beat")).toEqual(stickReady);
   });
 
   it("persists color and pose to storage", () => {

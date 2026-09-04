@@ -4,6 +4,12 @@ import { createLowPolyPerson, type PersonRig } from "../scene/createCharacter";
 
 const liftHeight = 1.15;
 const supporterOffset = 0.38;
+/** Exponential approach rate while rising into lift height. */
+const raiseRate = 6;
+/** Faster descent so cancel lands in ~0.2s instead of ~1s. */
+const lowerRate = 28;
+/** Scale-down exit for lifter NPCs after cancel (seconds). */
+const exitDuration = 0.2;
 const softKnee = 0.3;
 const softHip = softKnee * 0.5;
 const softFootCenterY = 0.64 - Math.cos(softHip) * 0.58;
@@ -13,6 +19,10 @@ export class LiftController {
   readonly supporters: readonly [PersonRig, PersonRig];
   private active = false;
   private visible = false;
+  /** True while descending after cancel; keeps formation logic until grounded. */
+  private settling = false;
+  private exiting = false;
+  private exitElapsed = 0;
   private walkTime = 0;
   private readonly armIK = new TwoBoneIKSolver();
   private readonly handTarget = new THREE.Vector3();
@@ -58,7 +68,7 @@ export class LiftController {
   }
 
   get isSupporting(): boolean {
-    return this.active || this.visible;
+    return this.active || this.visible || this.settling || this.exiting;
   }
 
   get supporterPositions(): readonly THREE.Vector3[] {
@@ -70,7 +80,16 @@ export class LiftController {
     this.active = active;
     if (active) {
       this.visible = true;
+      this.settling = false;
+      this.exiting = false;
+      this.exitElapsed = 0;
       this.group.visible = true;
+      this.group.scale.setScalar(1);
+    } else if (this.visible || this.exiting || this.settling) {
+      // Begin a short scale-down exit; keep settling until the player reaches ground.
+      this.settling = true;
+      this.exiting = true;
+      this.exitElapsed = 0;
     }
   }
 
@@ -82,16 +101,28 @@ export class LiftController {
     groundY = this.groundY,
   ): void {
     const targetY = this.active ? groundY + liftHeight : groundY;
-    playerPosition.y = THREE.MathUtils.lerp(playerPosition.y, targetY, 1 - Math.exp(-dt * 6));
+    const rate = this.active ? raiseRate : lowerRate;
+    playerPosition.y = THREE.MathUtils.lerp(playerPosition.y, targetY, 1 - Math.exp(-dt * rate));
 
     if (this.active && Math.abs(playerPosition.y - targetY) < 0.004) {
       playerPosition.y = targetY;
     }
 
+    if (this.exiting) {
+      this.exitElapsed += dt;
+      const t = Math.min(1, this.exitElapsed / exitDuration);
+      this.group.scale.setScalar(1 - t);
+      if (t >= 1) {
+        this.hideSupporters();
+      }
+    }
+
     if (!this.active && Math.abs(playerPosition.y - groundY) < 0.004) {
       playerPosition.y = groundY;
-      this.visible = false;
-      this.group.visible = false;
+      this.settling = false;
+      if (this.visible || this.exiting) {
+        this.hideSupporters();
+      }
     }
 
     this.group.position.set(playerPosition.x, groundY, playerPosition.z);
@@ -102,6 +133,14 @@ export class LiftController {
       this.group.updateMatrixWorld(true);
       this.poseSupporterHands(playerPosition.y - groundY);
     }
+  }
+
+  private hideSupporters(): void {
+    this.visible = false;
+    this.exiting = false;
+    this.exitElapsed = 0;
+    this.group.visible = false;
+    this.group.scale.setScalar(1);
   }
 
   applyPlayerPose(): void {
@@ -116,9 +155,9 @@ export class LiftController {
     this.playerRig.rightKnee.rotation.set(-softKnee, 0, 0);
     this.playerRig.leftFootPivot.rotation.set(softHip, 0, 0);
     this.playerRig.rightFootPivot.rotation.set(softHip, 0, 0);
-    // Swap prior left/right cheer roles; mirror Z so abduction stays outward per side.
+    // Left abducts; right aims stage-forward-up at ~45° (π/2 + π/4).
     this.playerRig.leftArm.rotation.set(0.12, 0, -1.35);
-    this.playerRig.rightArm.rotation.set(Math.PI / 2, 0, -0.12);
+    this.playerRig.rightArm.rotation.set(Math.PI / 2 + Math.PI / 4, 0, -0.12);
     this.playerRig.leftForearm.rotation.set(0, 0, 0);
     this.playerRig.rightForearm.rotation.set(0, 0, 0);
   }
