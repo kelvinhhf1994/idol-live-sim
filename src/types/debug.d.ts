@@ -1,4 +1,5 @@
 import type { AppSnapshot } from "../app/App";
+import type { VenueDefinition } from "../config/venue";
 
 declare global {
   interface Window {
@@ -11,6 +12,8 @@ declare global {
       setMoshPhase: (progress: number) => void;
       setCameraYaw: (yaw: number) => void;
       setCameraView: (yaw: number, pitch: number) => void;
+      setIdolCount: (count: number) => void;
+      loadVenue: (venueDef: VenueDefinition) => void;
     };
   }
 }

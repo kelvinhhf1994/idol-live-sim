@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach, type Mock } from "vitest";
+import { describe, expect, it, vi, beforeEach, type Mock } from "vitest";
 import { StationSelectorState, STATIONS, type Station } from "./StationSelector";
 
 describe("StationSelectorState", () => {
@@ -7,17 +7,12 @@ describe("StationSelectorState", () => {
   let onFeedbackChange: Mock<(message: string) => void>;
 
   beforeEach(() => {
-    vi.useFakeTimers();
     onEnter = vi.fn<(station: Station) => void>();
     onStationChange = vi.fn<(station: Station) => void>();
     onFeedbackChange = vi.fn<(message: string) => void>();
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("defines exactly 5 stations in the specified order with correct click requirements", () => {
+  it("defines exactly 5 stations in the specified order", () => {
     expect(STATIONS).toHaveLength(5);
     expect(STATIONS.map((s) => s.name)).toEqual([
       "NeoBackstage",
@@ -27,11 +22,10 @@ describe("StationSelectorState", () => {
       "旺角",
     ]);
 
-    expect(STATIONS[0].requiredClicks).toBe(1);
     expect(STATIONS[0].status).toBe("active");
+    expect(STATIONS[1].status).toBe("active");
 
-    for (let i = 1; i < 5; i++) {
-      expect(STATIONS[i].requiredClicks).toBe(5);
+    for (let i = 2; i < 5; i++) {
       expect(STATIONS[i].status).toBe("coming-soon");
       expect(STATIONS[i].copy).toBe("即將推出");
     }
@@ -53,63 +47,21 @@ describe("StationSelectorState", () => {
     expect(onEnter).toHaveBeenCalledWith(STATIONS[0]);
   });
 
-  it("requires exactly 5 clicks to enter unreleased stations", () => {
-    const state = new StationSelectorState({ onEnter, onStationChange, onFeedbackChange });
-
-    state.selectStationById("ngau-tau-kok");
-    expect(state.getCurrentStation().name).toBe("牛頭角");
-    expect(onStationChange).toHaveBeenCalledWith(STATIONS[1]);
-
-    // Clicks 1 to 4 should not enter
-    for (let click = 1; click <= 4; click++) {
-      const result = state.handleEnterClick();
-      expect(result.entered).toBe(false);
-      expect(result.remainingClicks).toBe(5 - click);
-      expect(onEnter).not.toHaveBeenCalled();
-      expect(onFeedbackChange).toHaveBeenCalledWith(
-        expect.stringContaining(`尚餘 ${5 - click} 次`),
-      );
-    }
-
-    // 5th click enters
-    const finalResult = state.handleEnterClick();
-    expect(finalResult.entered).toBe(true);
-    expect(finalResult.remainingClicks).toBe(0);
-    expect(onEnter).toHaveBeenCalledTimes(1);
-    expect(onEnter).toHaveBeenCalledWith(STATIONS[1]);
-  });
-
-  it("resets click count when switching stations", () => {
+  it("never enters coming-soon stations, even after repeated clicks", () => {
     const state = new StationSelectorState({ onEnter, onStationChange, onFeedbackChange });
 
     state.selectStationById("kowloon-bay");
-    state.handleEnterClick();
-    state.handleEnterClick();
-    expect(state.getClickCount()).toBe(2);
+    expect(state.getCurrentStation().name).toBe("九龍灣");
+    expect(onStationChange).toHaveBeenCalledWith(STATIONS[2]);
 
-    // Switch station
-    state.selectStationById("diamond-hill");
-    expect(state.getClickCount()).toBe(0);
-    expect(onFeedbackChange).toHaveBeenCalledWith("");
-  });
+    for (let click = 0; click < 8; click += 1) {
+      const result = state.handleEnterClick();
+      expect(result.entered).toBe(false);
+      expect(result.feedback).toBe("即將推出");
+    }
 
-  it("resets click count after timeout", () => {
-    const state = new StationSelectorState({
-      onEnter,
-      onStationChange,
-      onFeedbackChange,
-      resetTimeoutMs: 2000,
-    });
-
-    state.selectStationById("mong-kok");
-    state.handleEnterClick();
-    state.handleEnterClick();
-    state.handleEnterClick();
-    expect(state.getClickCount()).toBe(3);
-
-    vi.advanceTimersByTime(2100);
-    expect(state.getClickCount()).toBe(0);
-    expect(onFeedbackChange).toHaveBeenCalledWith("");
+    expect(onEnter).not.toHaveBeenCalled();
+    expect(onFeedbackChange).toHaveBeenCalledWith("即將推出");
   });
 
   it("calculates snap index accurately based on track center", () => {

@@ -647,9 +647,10 @@ test("hides YouTube controls and supports penlight plus settings panels", async 
     .toBeCloseTo(1, 5);
 });
 
-test("supports cyberpunk MTR station selector and 5-click easter egg entry", async ({
+test("supports cyberpunk MTR station selector and one-click entry for open venues", async ({
   page,
 }) => {
+  test.slow();
   await page.goto("/");
 
   const metroSelector = page.locator(".metro-selector");
@@ -664,25 +665,49 @@ test("supports cyberpunk MTR station selector and 5-click easter egg entry", asy
   await expect(stations.nth(3)).toContainText("鑽石山");
   await expect(stations.nth(4)).toContainText("旺角");
 
-  // Select 2nd station (牛頭角)
+  // Select 2nd station (牛頭角) - now active
   await stations.nth(1).click();
   await expect(page.locator("#entry-title")).toContainText("牛頭角");
-  await expect(page.locator("#station-copy")).toHaveText("即將推出");
-  await expect(page.locator("#station-status-badge")).toContainText("即將推出");
+  await expect(page.locator("#station-status-badge")).toContainText("現正開放");
 
+  // Enters immediately with 1 click
   const enterButton = page.locator("#enter-button");
-  const feedback = page.locator("#enter-feedback");
-
-  // Click 1 to 4 should not enter
-  for (let i = 1; i <= 4; i++) {
-    await enterButton.click();
-    await expect(page.locator("#entry")).toBeVisible();
-    await expect(feedback).toContainText(`尚餘 ${5 - i} 次`);
-  }
-
-  // 5th click enters
   await enterButton.click();
   await expect(page.locator("#entry")).toBeHidden();
   await expect(page.locator("#hud")).toBeVisible();
   await expect(page.locator("#venue-badge-text")).toContainText("LIVE · 牛頭角");
+
+  // House lights default to off (show mode); the top-left toggle turns them on and off
+  const houseLights = page.locator("#house-lights-button");
+  await expect(houseLights).toBeVisible();
+  await expect(houseLights).toHaveAttribute("aria-pressed", "false");
+  await expect(houseLights).toContainText("開燈");
+  await houseLights.click();
+  await expect(houseLights).toHaveAttribute("aria-pressed", "true");
+  await expect(houseLights).toContainText("關燈");
+  await houseLights.click();
+  await expect(houseLights).toHaveAttribute("aria-pressed", "false");
+});
+
+test("keeps unreleased stations locked without a click-to-unlock easter egg", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const stations = page.locator(".metro-station");
+  await stations.nth(2).click();
+  await expect(page.locator("#entry-title")).toContainText("九龍灣");
+  await expect(page.locator("#station-copy")).toHaveText("即將推出");
+  await expect(page.locator("#station-status-badge")).toContainText("即將推出");
+
+  const enterButton = page.locator("#enter-button");
+  await expect(enterButton).toBeDisabled();
+
+  for (let i = 0; i < 5; i += 1) {
+    await enterButton.click({ force: true });
+  }
+
+  await expect(page.locator("#entry")).toBeVisible();
+  await expect(page.locator("#hud")).toBeHidden();
+  await expect(page.locator("#enter-feedback")).toContainText("即將推出");
 });

@@ -1,19 +1,36 @@
 import * as THREE from "three";
 import type { VenueDefinition } from "../config/venue";
 import type { Aabb2 } from "../core/collision";
+import { createNgauTauKokVenue } from "./createNgauTauKokVenue";
+
+export interface HouseLights {
+  readonly enabled: boolean;
+  setEnabled(enabled: boolean): void;
+}
 
 export interface VenueBuild {
   group: THREE.Group;
   colliders: Aabb2[];
-  performerPoints: THREE.Vector3[];
   audiencePoints: THREE.Vector3[];
   stageLights: THREE.SpotLight[];
+  /** Venue-level work lights (ceiling panels + ambient). Absent when a venue has no house-light toggle. */
+  houseLights?: HouseLights;
+  /** Decorative dummies and standees that mosh / lift can knock. */
+  knockableProps: THREE.Object3D[];
 }
 
 type InstanceTransform = readonly [number, number, number, number, number, number, number, number, number];
 
 export function createVenue(definition: VenueDefinition): VenueBuild {
-  if (definition.scene.kind !== "procedural" || definition.scene.builderId !== "neon-backstage") {
+  if (definition.scene.kind !== "procedural") {
+    throw new Error(`Unsupported venue scene: ${definition.id}`);
+  }
+
+  if (definition.scene.builderId === "ngau-tau-kok") {
+    return createNgauTauKokVenue(definition);
+  }
+
+  if (definition.scene.builderId !== "neon-backstage") {
     throw new Error(`Unsupported venue scene: ${definition.id}`);
   }
 
@@ -158,15 +175,14 @@ export function createVenue(definition: VenueDefinition): VenueBuild {
   group.add(exitLabel);
 
   const stageLights = createStageLights(group, definition.show.lightColors, stagePlatform);
-  const performerPoints = definition.show.performerPoints.map(([x, y, z]) => new THREE.Vector3(x, y, z));
   const audiencePoints = definition.show.audiencePoints.map(([x, y, z]) => new THREE.Vector3(x, y, z));
 
   return {
     group,
     colliders,
-    performerPoints,
     audiencePoints,
     stageLights,
+    knockableProps: [],
   };
 }
 
@@ -209,7 +225,8 @@ function textTexture(
   color: string,
   width: number,
   height: number,
-): THREE.CanvasTexture {
+): THREE.Texture {
+  if (typeof document === "undefined") return new THREE.Texture();
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -235,7 +252,8 @@ function textTexture(
   return texture;
 }
 
-function curtainTexture(): THREE.CanvasTexture {
+function curtainTexture(): THREE.Texture {
+  if (typeof document === "undefined") return new THREE.Texture();
   const canvas = document.createElement("canvas");
   canvas.width = 512;
   canvas.height = 512;

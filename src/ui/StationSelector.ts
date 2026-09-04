@@ -5,7 +5,7 @@ export interface Station {
   readonly code: string;
   readonly status: "active" | "coming-soon";
   readonly copy: string;
-  readonly requiredClicks: number;
+  readonly venueId?: string;
 }
 
 export const STATIONS: readonly Station[] = [
@@ -16,16 +16,16 @@ export const STATIONS: readonly Station[] = [
     code: "NBS",
     status: "active",
     copy: "走入現場，穿過人群，從你的角度感受舞台。",
-    requiredClicks: 1,
+    venueId: "generic-hk-live-house-01",
   },
   {
     id: "ngau-tau-kok",
     name: "牛頭角",
     enName: "NGAU TAU KOK",
     code: "NTK",
-    status: "coming-soon",
-    copy: "即將推出",
-    requiredClicks: 5,
+    status: "active",
+    copy: "觀塘廳 1 號館：9.2米主舞台、實木地板、中央Disco球與LED巨幕。",
+    venueId: "ngau-tau-kok-hall-01",
   },
   {
     id: "kowloon-bay",
@@ -34,7 +34,6 @@ export const STATIONS: readonly Station[] = [
     code: "KOB",
     status: "coming-soon",
     copy: "即將推出",
-    requiredClicks: 5,
   },
   {
     id: "diamond-hill",
@@ -43,7 +42,6 @@ export const STATIONS: readonly Station[] = [
     code: "DIH",
     status: "coming-soon",
     copy: "即將推出",
-    requiredClicks: 5,
   },
   {
     id: "mong-kok",
@@ -52,13 +50,11 @@ export const STATIONS: readonly Station[] = [
     code: "MOK",
     status: "coming-soon",
     copy: "即將推出",
-    requiredClicks: 5,
   },
 ];
 
 export interface StationSelectorStateOptions {
   readonly initialIndex?: number;
-  readonly resetTimeoutMs?: number;
   readonly onEnter?: (station: Station) => void;
   readonly onStationChange?: (station: Station) => void;
   readonly onFeedbackChange?: (message: string) => void;
@@ -66,20 +62,16 @@ export interface StationSelectorStateOptions {
 
 /**
  * Pure state manager for the station selector logic.
- * Handles station selection, snap calculations, and the 5-click easter egg entry.
+ * Handles station selection and snap calculations.
  */
 export class StationSelectorState {
   private currentIndex = 0;
-  private clickCount = 0;
-  private clickTimer: ReturnType<typeof setTimeout> | null = null;
-  private readonly resetTimeoutMs: number;
   private readonly onEnter?: (station: Station) => void;
   private readonly onStationChange?: (station: Station) => void;
   private readonly onFeedbackChange?: (message: string) => void;
 
   constructor(options?: StationSelectorStateOptions) {
     this.currentIndex = options?.initialIndex ?? 0;
-    this.resetTimeoutMs = options?.resetTimeoutMs ?? 2500;
     this.onEnter = options?.onEnter;
     this.onStationChange = options?.onStationChange;
     this.onFeedbackChange = options?.onFeedbackChange;
@@ -97,15 +89,11 @@ export class StationSelectorState {
     return this.currentIndex;
   }
 
-  public getClickCount(): number {
-    return this.clickCount;
-  }
-
   public selectStationByIndex(index: number): boolean {
     if (index < 0 || index >= STATIONS.length) return false;
     if (this.currentIndex !== index) {
       this.currentIndex = index;
-      this.resetClickCounter();
+      this.onFeedbackChange?.("");
       this.onStationChange?.(this.getCurrentStation());
       return true;
     }
@@ -120,49 +108,17 @@ export class StationSelectorState {
     return false;
   }
 
-  public handleEnterClick(): { entered: boolean; remainingClicks: number; feedback: string } {
+  public handleEnterClick(): { entered: boolean; feedback: string } {
     const station = this.getCurrentStation();
-
-    // Standard entry for ready stations
-    if (station.requiredClicks <= 1) {
-      this.resetClickCounter();
-      this.onEnter?.(station);
-      return { entered: true, remainingClicks: 0, feedback: "" };
+    if (station.status !== "active") {
+      const feedback = "即將推出";
+      this.onFeedbackChange?.(feedback);
+      return { entered: false, feedback };
     }
 
-    this.clickCount += 1;
-    this.armResetTimer();
-
-    const remaining = station.requiredClicks - this.clickCount;
-    if (remaining <= 0) {
-      this.resetClickCounter();
-      this.onEnter?.(station);
-      return { entered: true, remainingClicks: 0, feedback: "解鎖成功！進入測試場館..." };
-    }
-
-    const feedback = `即將推出（連按 5 下解鎖，尚餘 ${remaining} 次）`;
-    this.onFeedbackChange?.(feedback);
-    return { entered: false, remainingClicks: remaining, feedback };
-  }
-
-  public resetClickCounter(): void {
-    this.clickCount = 0;
-    if (this.clickTimer !== null) {
-      clearTimeout(this.clickTimer);
-      this.clickTimer = null;
-    }
     this.onFeedbackChange?.("");
-  }
-
-  private armResetTimer(): void {
-    if (this.clickTimer !== null) {
-      clearTimeout(this.clickTimer);
-    }
-    this.clickTimer = setTimeout(() => {
-      this.clickCount = 0;
-      this.onFeedbackChange?.("");
-      this.clickTimer = null;
-    }, this.resetTimeoutMs);
+    this.onEnter?.(station);
+    return { entered: true, feedback: "" };
   }
 
   /**
@@ -186,7 +142,7 @@ export class StationSelectorState {
   }
 
   public dispose(): void {
-    this.resetClickCounter();
+    this.onFeedbackChange?.("");
   }
 }
 
@@ -213,13 +169,11 @@ export class StationSelector {
     elements: StationSelectorUIElements,
     options: {
       onEnter: (station: Station) => void;
-      resetTimeoutMs?: number;
     },
   ) {
     this.elements = elements;
     this.state = new StationSelectorState({
       onEnter: options.onEnter,
-      resetTimeoutMs: options.resetTimeoutMs,
       onStationChange: () => this.syncUI(false),
       onFeedbackChange: (msg) => this.updateFeedback(msg),
     });
@@ -243,7 +197,7 @@ export class StationSelector {
     this.syncUI(shouldScroll);
   }
 
-  public handleEnterClick(): { entered: boolean; remainingClicks: number; feedback: string } {
+  public handleEnterClick(): { entered: boolean; feedback: string } {
     return this.state.handleEnterClick();
   }
 
@@ -368,18 +322,17 @@ export class StationSelector {
     if (station.status === "active") {
       this.elements.statusBadge.textContent = "現正開放 · LIVE";
       this.elements.statusBadge.className = "station-badge station-badge--active";
+      this.updateFeedback("");
     } else {
       this.elements.statusBadge.textContent = "即將推出 · COMING SOON";
       this.elements.statusBadge.className = "station-badge station-badge--soon";
+      this.updateFeedback("即將推出");
     }
 
-    if (station.id === "neo-backstage") {
-      this.elements.enterButton.textContent = "進入場館";
-      this.elements.enterButton.classList.remove("primary-button--soon");
-    } else {
-      this.elements.enterButton.textContent = "進入場館";
-      this.elements.enterButton.classList.add("primary-button--soon");
-    }
+    this.elements.enterButton.textContent = "進入場館";
+    const isOpen = station.status === "active";
+    this.elements.enterButton.disabled = !isOpen;
+    this.elements.enterButton.classList.toggle("primary-button--soon", !isOpen);
 
     if (shouldScroll) {
       const targetBtn = this.stationButtons[currentIdx];

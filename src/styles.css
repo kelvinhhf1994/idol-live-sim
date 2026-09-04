@@ -401,10 +401,64 @@ button {
   user-select: none;
 }
 
-.venue-badge {
+.hud-topleft {
   position: absolute;
   top: max(16px, env(safe-area-inset-top));
   left: max(20px, env(safe-area-inset-left));
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.house-lights-button {
+  min-height: 34px;
+  border-color: rgba(255, 255, 255, 0.14);
+  padding: 6px 10px;
+  background: rgba(8, 6, 17, 0.68);
+  backdrop-filter: blur(12px);
+}
+
+.house-lights-button[hidden] {
+  display: none;
+}
+
+.idol-count {
+  position: relative;
+}
+
+.idol-count-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  gap: 5px;
+  border: 1px solid rgba(214, 255, 63, 0.42);
+  padding: 6px;
+  background: rgba(12, 9, 22, 0.94);
+  backdrop-filter: blur(12px);
+}
+
+.idol-count-panel[hidden] {
+  display: none;
+}
+
+.idol-count-chip {
+  min-width: 30px;
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(8, 6, 17, 0.6);
+  color: #f9f6ef;
+  font: 700 13px / 1 "Barlow Condensed", sans-serif;
+}
+
+.idol-count-chip[aria-selected="true"] {
+  border-color: var(--acid);
+  background: rgba(214, 255, 63, 0.22);
+}
+
+.venue-badge {
   display: flex;
   align-items: center;
   gap: 9px;

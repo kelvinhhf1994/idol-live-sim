@@ -17,8 +17,8 @@ export class CameraController {
   constructor(
     private readonly camera: THREE.PerspectiveCamera,
     private readonly lookZone: HTMLElement,
-    private readonly venue: VenueDefinition,
-    private readonly colliders: readonly Aabb2[],
+    private venue: VenueDefinition,
+    private colliders: readonly Aabb2[],
     private readonly player: PlayerController,
   ) {
     this.yaw = venue.spawn.yaw;
@@ -27,6 +27,13 @@ export class CameraController {
     lookZone.addEventListener("pointerup", this.handlePointerEnd);
     lookZone.addEventListener("pointercancel", this.handlePointerEnd);
     lookZone.addEventListener("lostpointercapture", this.handleLostCapture);
+  }
+
+  setVenue(venue: VenueDefinition, colliders: readonly Aabb2[]): void {
+    this.venue = venue;
+    this.colliders = colliders;
+    this.yaw = venue.spawn.yaw;
+    this.update(1, this.player.position);
   }
 
   toggleMode(): CameraMode {

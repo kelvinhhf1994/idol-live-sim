@@ -7,7 +7,8 @@ import {
 } from "../animation/personPose";
 import type { VenueDefinition } from "../config/venue";
 import type { AudienceImpactSource } from "../player/PlayerController";
-import { createLowPolyPerson, type CharacterOptions, type PersonRig } from "../scene/createCharacter";
+import { createLowPolyPerson, type PersonRig } from "../scene/createCharacter";
+import { createChibiIdol } from "../scene/createChibiIdol";
 import { groundHeightAt } from "../core/venueGround";
 import {
   createAudienceKnockbackState,
@@ -15,6 +16,8 @@ import {
   tryHitAudience,
   type AudienceKnockbackState,
 } from "./audienceKnockback";
+import { formationPoints, type PerformerLine } from "./formation";
+import { IDOL_MEMBERS, MAX_IDOL_COUNT } from "./idolMembers";
 
 export interface DancePose {
   armSwing: number;
@@ -51,6 +54,17 @@ interface AudienceMember {
   poseTarget: PersonPose;
 }
 
+interface KnockableProp {
+  object: THREE.Object3D;
+  homeYaw: number;
+  knockback: AudienceKnockbackState;
+}
+
+export interface PropStatusSnapshot {
+  knockedPropCount: number;
+  returningPropCount: number;
+}
+
 export interface AudienceStatusSnapshot {
   knockedAudienceCount: number;
   returningAudienceCount: number;
@@ -73,55 +87,42 @@ export interface PerformerStatusSnapshot {
   } | null;
 }
 
-const idolStyles: CharacterOptions[] = [
-  { hairStyle: "twin", skirt: true, palette: { hair: 0x201828, top: 0xfff1f6, bottom: 0xff397d, accent: 0xd6ff3f } },
-  { hairStyle: "bob", skirt: true, palette: { hair: 0x6a2d39, top: 0x201a2a, bottom: 0x8b5cf6, accent: 0xff397d } },
-  { hairStyle: "ponytail", skirt: true, palette: { hair: 0x18141d, top: 0xd6ff3f, bottom: 0x25202e, accent: 0x8b5cf6 } },
-  { hairStyle: "short", skirt: true, palette: { hair: 0xc45d73, top: 0xf5ecdf, bottom: 0x3f8cff, accent: 0xff397d } },
-  { hairStyle: "twin", skirt: true, palette: { hair: 0x2a1b20, top: 0xff397d, bottom: 0x17121e, accent: 0xd6ff3f } },
-];
-
 export class ShowController {
   readonly group = new THREE.Group();
   private readonly performers: Performer[] = [];
   private readonly audience: AudienceMember[] = [];
+  private readonly props: KnockableProp[] = [];
+  private performerCount = 0;
   private readonly resolveGroundHeight = (x: number, z: number): number =>
     groundHeightAt(this.venue, x, z);
 
   constructor(
-    performerPoints: readonly THREE.Vector3[],
+    private readonly performerLine: PerformerLine,
     audiencePoints: readonly THREE.Vector3[],
     private readonly stageLights: readonly THREE.SpotLight[],
     private readonly venue: Pick<
       VenueDefinition,
       "bounds" | "colliders" | "platforms" | "spawn"
     >,
+    knockableProps: readonly THREE.Object3D[] = [],
+    initialPerformerCount = MAX_IDOL_COUNT,
   ) {
-    if (performerPoints.length < idolStyles.length) {
-      throw new Error("The venue must provide five performer points");
-    }
-
-    idolStyles.forEach((style, index) => {
-      const rig = createLowPolyPerson({ ...style, scale: 0.96 });
-      rig.group.position.copy(performerPoints[index]);
+    IDOL_MEMBERS.forEach((member, index) => {
+      const rig = createChibiIdol(member);
       rig.group.rotation.y = Math.PI;
       this.group.add(rig.group);
       this.performers.push({
         rig,
-        baseX: rig.group.position.x,
-        homeY: rig.group.position.y,
-        homeZ: rig.group.position.z,
+        baseX: 0,
+        homeY: performerLine.y,
+        homeZ: performerLine.z,
         index,
-        knockback: createAudienceKnockbackState(
-          index + 100,
-          rig.group.position.x,
-          rig.group.position.z,
-          rig.group.position.y,
-        ),
+        knockback: createAudienceKnockbackState(index + 100, 0, performerLine.z, performerLine.y),
         dancePose: createDancePose(),
         poseTarget: createPersonPose(),
       });
     });
+    this.setPerformerCount(initialPerformerCount);
 
     const audiencePalettes = [
       { top: 0x35303f, bottom: 0x17141d, accent: 0xd6ff3f },
@@ -146,11 +147,52 @@ export class ShowController {
         poseTarget: createPersonPose(),
       });
     });
+
+    knockableProps.forEach((object, index) => {
+      this.props.push({
+        object,
+        homeYaw: object.rotation.y,
+        knockback: createAudienceKnockbackState(
+          index + 200,
+          object.position.x,
+          object.position.z,
+          object.position.y,
+        ),
+      });
+    });
+  }
+
+  /** Members on stage right now; the rest stay built but hidden and inert. */
+  getPerformerCount(): number {
+    return this.performerCount;
+  }
+
+  /** Re-centres the line so any 1..MAX_IDOL_COUNT subset keeps the stage mid-point. */
+  setPerformerCount(count: number): void {
+    const next = Math.max(1, Math.min(MAX_IDOL_COUNT, Math.round(count)));
+    this.performerCount = next;
+    const points = formationPoints(this.performerLine, next);
+    this.performers.forEach((performer, index) => {
+      const onStage = index < next;
+      performer.rig.group.visible = onStage;
+      if (!onStage) return;
+
+      const point = points[index];
+      performer.baseX = point.x;
+      performer.homeY = point.y;
+      performer.homeZ = point.z;
+      performer.knockback = createAudienceKnockbackState(index + 100, point.x, point.z, point.y);
+      performer.rig.group.position.copy(point);
+      performer.rig.group.rotation.y = Math.PI;
+    });
   }
 
   update(elapsed: number, dt: number, impact: AudienceImpactSource): void {
-    this.performers.forEach((performer) => this.updatePerformer(performer, elapsed, dt, impact));
+    this.forEachPerformerOnStage((performer) =>
+      this.updatePerformer(performer, elapsed, dt, impact),
+    );
     this.audience.forEach((member) => this.updateAudience(member, elapsed, dt, impact));
+    this.props.forEach((prop) => this.updateProp(prop, dt, impact));
     this.stageLights.forEach((light, index) => {
       light.intensity = 33 + Math.sin(elapsed * 2.1 + index * 1.7) * 7;
     });
@@ -181,8 +223,8 @@ export class ShowController {
     let knockedPerformerCount = 0;
     let returningPerformerCount = 0;
     let firstActivePerformer: PerformerStatusSnapshot["firstActivePerformer"] = null;
-    for (const performer of this.performers) {
-      const { knockback } = performer;
+    for (let index = 0; index < this.performerCount; index += 1) {
+      const { knockback } = this.performers[index];
       if (knockback.phase === "home") continue;
       if (knockback.phase === "returning") returningPerformerCount += 1;
       else knockedPerformerCount += 1;
@@ -198,6 +240,17 @@ export class ShowController {
     return { knockedPerformerCount, returningPerformerCount, firstActivePerformer };
   }
 
+  getPropStatus(): PropStatusSnapshot {
+    let knockedPropCount = 0;
+    let returningPropCount = 0;
+    for (const prop of this.props) {
+      if (prop.knockback.phase === "home") continue;
+      if (prop.knockback.phase === "returning") returningPropCount += 1;
+      else knockedPropCount += 1;
+    }
+    return { knockedPropCount, returningPropCount };
+  }
+
   triggerAudienceKnockback(mode: "mosh" | "lift"): boolean {
     const member = this.audience.find((candidate) => candidate.knockback.phase === "home");
     if (!member) return false;
@@ -205,7 +258,9 @@ export class ShowController {
   }
 
   triggerPerformerKnockback(mode: "mosh" | "lift"): boolean {
-    const performer = this.performers.find((candidate) => candidate.knockback.phase === "home");
+    const performer = this.performers
+      .slice(0, this.performerCount)
+      .find((candidate) => candidate.knockback.phase === "home");
     if (!performer) return false;
     return tryHitAudience(performer.knockback, mode, 0, 1, 0, 1);
   }
@@ -214,6 +269,16 @@ export class ShowController {
     this.audience.forEach((member, index) => {
       member.rig.group.visible = !reduced || index < 8;
     });
+  }
+
+  setPerformerOutlines(visible: boolean): void {
+    this.performers.forEach((performer) => {
+      performer.rig.outlines.forEach((shell) => (shell.visible = visible));
+    });
+  }
+
+  private forEachPerformerOnStage(visit: (performer: Performer) => void): void {
+    for (let index = 0; index < this.performerCount; index += 1) visit(this.performers[index]);
   }
 
   private animatePerformer(performer: Performer, elapsed: number): void {
@@ -331,6 +396,39 @@ export class ShowController {
     }
     member.rig.group.position.set(state.x, state.y, state.z);
     this.animateKnockedCharacter(member.rig, state, member.poseTarget);
+  }
+
+  private updateProp(prop: KnockableProp, dt: number, impact: AudienceImpactSource): void {
+    const state = prop.knockback;
+    if (impact.mode && state.phase === "home" && this.isCharacterInImpactRange(state, impact)) {
+      tryHitAudience(
+        state,
+        impact.mode,
+        impact.movementX,
+        impact.movementZ,
+        impact.forwardX,
+        impact.forwardZ,
+      );
+    }
+
+    if (state.phase === "home") {
+      prop.object.position.set(state.homeX, state.homeY, state.homeZ);
+      prop.object.rotation.set(0, prop.homeYaw, 0);
+      return;
+    }
+
+    stepAudienceKnockback(state, dt, this.venue.bounds, this.resolveGroundHeight);
+    prop.object.position.set(state.x, state.y, state.z);
+    if (state.phase === "airborne") {
+      prop.object.rotation.x = Math.min(1.1, state.elapsed * 2.4);
+      prop.object.rotation.z = Math.sin(state.elapsed * 9) * 0.35;
+    } else if (state.phase === "returning") {
+      const dx = state.homeX - state.x;
+      const dz = state.homeZ - state.z;
+      prop.object.rotation.y = Math.atan2(-dx, -dz);
+      prop.object.rotation.x *= 0.7;
+      prop.object.rotation.z *= 0.7;
+    }
   }
 
   private isCharacterInImpactRange(

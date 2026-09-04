@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { formationPoints } from "../show/formation";
+import { MAX_IDOL_COUNT } from "../show/idolMembers";
 import { GENERIC_VENUE } from "./venue";
 
 describe("generic venue stage layout", () => {
@@ -32,11 +34,12 @@ describe("generic venue stage layout", () => {
 
   it("keeps performers within the wider stage and audience in front of the barrier", () => {
     const stage = GENERIC_VENUE.platforms[0].bounds;
-    const performerXs = GENERIC_VENUE.show.performerPoints.map(([x]) => x);
+    const performers = formationPoints(GENERIC_VENUE.show.performerLine, MAX_IDOL_COUNT);
+    const performerXs = performers.map(({ x }) => x);
 
     expect(Math.min(...performerXs)).toBeLessThanOrEqual(-4);
     expect(Math.max(...performerXs)).toBeGreaterThanOrEqual(4);
-    for (const [x, y, z] of GENERIC_VENUE.show.performerPoints) {
+    for (const { x, y, z } of performers) {
       expect(x).toBeGreaterThan(stage.minX + 0.5);
       expect(x).toBeLessThan(stage.maxX - 0.5);
       expect(y).toBe(0.75);

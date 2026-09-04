@@ -132,14 +132,27 @@ export class PlayerController {
 
   constructor(
     private readonly rig: PersonRig,
-    private readonly venue: VenueDefinition,
-    private readonly colliders: readonly Aabb2[],
+    private venue: VenueDefinition,
+    private colliders: readonly Aabb2[],
   ) {
     this.group = rig.group;
     this.lift = new LiftController(venue.spawn.y, rig);
     this.position.set(venue.spawn.x, venue.spawn.y, venue.spawn.z);
     this.yaw = venue.spawn.yaw;
     this.applyPenlightVisuals();
+    this.syncTransform();
+  }
+
+  setVenue(venue: VenueDefinition, colliders: readonly Aabb2[]): void {
+    this.venue = venue;
+    this.colliders = colliders;
+  }
+
+  teleportTo(x: number, y: number, z: number, yaw: number): void {
+    this.position.set(x, y, z);
+    this.yaw = yaw;
+    this.verticalVelocity = 0;
+    this.grounded = true;
     this.syncTransform();
   }
 
@@ -187,9 +200,12 @@ export class PlayerController {
         this.venue.bounds.maxZ - boundaryPadding,
       );
       const nextGroundHeight = groundHeightAt(this.venue, nextX, nextZ);
+      const stepDelta = nextGroundHeight - startingGroundHeight;
+      const canStep = !formationActive && Math.abs(stepDelta) <= 0.22;
       if (
         (this.grounded || formationActive) &&
-        Math.abs(nextGroundHeight - startingGroundHeight) > 0.001
+        !canStep &&
+        Math.abs(stepDelta) > 0.001
       ) {
         this.audienceImpact.movementX = 0;
         this.audienceImpact.movementZ = 0;
@@ -228,6 +244,7 @@ export class PlayerController {
         this.grounded = true;
       }
     } else {
+      // Step up or down immediately to match ground height when grounded
       this.position.y = this.groundHeight;
     }
 

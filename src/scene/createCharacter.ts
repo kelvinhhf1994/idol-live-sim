@@ -1,4 +1,7 @@
 import * as THREE from "three";
+import { getFaceTexture } from "./faceTexture";
+import { addOutline } from "./outline";
+import { makeToonMaterial } from "./toonMaterials";
 
 export interface CharacterPalette {
   skin: number;
@@ -6,6 +9,8 @@ export interface CharacterPalette {
   top: number;
   bottom: number;
   accent: number;
+  /** Iris colour, only used by the anime style. */
+  eye: number;
 }
 
 export interface CharacterOptions {
@@ -14,6 +19,8 @@ export interface CharacterOptions {
   hairStyle?: "bob" | "ponytail" | "short" | "twin";
   skirt?: boolean;
   glowStick?: boolean;
+  /** "anime" swaps in cel shading, a drawn face, layered hair, and outlines. */
+  style?: "lowpoly" | "anime";
 }
 
 export interface PersonRig {
@@ -54,6 +61,8 @@ export interface PersonRig {
   rightFoot: THREE.Mesh;
   /** Player/audience penlight mesh when glowStick option is enabled. */
   glowStick: THREE.Mesh | null;
+  /** Inverted-hull outline shells, empty unless the anime style is used. */
+  outlines: THREE.Mesh[];
 }
 
 /** Concert penlight radius (~44% thicker than the original 0.018 slim stick). */
@@ -87,6 +96,9 @@ const geometries = {
   ponytail: new THREE.CapsuleGeometry(0.105, 0.2, 4, 8),
   glowStick: createGlowStickGeometry(),
   shadow: new THREE.CircleGeometry(0.4, 16),
+  // Spherical patch hugging the front of the skull, carrying the face decal.
+  face: new THREE.SphereGeometry(0.2725, 20, 16, -Math.PI / 2 - 0.91, 1.82, 0.8975, 1.1341),
+  hairStrand: new THREE.ConeGeometry(0.042, 0.175, 4),
 };
 
 /** Classic indigo denim — readable against dark live-house floors. */
@@ -100,18 +112,21 @@ const defaultPalette: CharacterPalette = {
   top: 0xe8e0d4,
   bottom: DENIM_JEANS,
   accent: 0xff397d,
+  eye: 0x3f5c8c,
 };
 
 export function createLowPolyPerson(options: CharacterOptions = {}): PersonRig {
   const palette = { ...defaultPalette, ...options.palette };
+  const anime = options.style === "anime";
+  const surface = anime ? makeToonMaterial : makeMaterial;
   const materials = {
-    skin: makeMaterial(palette.skin),
-    hair: makeMaterial(palette.hair),
-    top: makeMaterial(palette.top),
-    bottom: makeMaterial(palette.bottom),
-    accent: makeMaterial(palette.accent, palette.accent),
+    skin: surface(palette.skin),
+    hair: surface(palette.hair),
+    top: surface(palette.top),
+    bottom: surface(palette.bottom),
+    accent: surface(palette.accent, palette.accent),
     eye: makeMaterial(0x171119),
-    shoe: makeMaterial(CANVAS_SNEAKER),
+    shoe: surface(CANVAS_SNEAKER),
   };
 
   const group = new THREE.Group();
@@ -164,11 +179,19 @@ export function createLowPolyPerson(options: CharacterOptions = {}): PersonRig {
 
   addHair(head, options.hairStyle ?? "short", materials.hair, materials.accent);
 
-  for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(geometries.eye, materials.eye);
-    eye.name = "eye";
-    setHeadChildTransform(eye, side * 0.075, 0.035, -0.235, 1, 1, 1);
-    head.add(eye);
+  let face: THREE.Mesh | null = null;
+  if (anime) {
+    face = new THREE.Mesh(geometries.face, makeFaceMaterial(palette.eye));
+    face.name = "face";
+    head.add(face);
+    addAnimeFringe(head, materials.hair);
+  } else {
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(geometries.eye, materials.eye);
+      eye.name = "eye";
+      setHeadChildTransform(eye, side * 0.075, 0.035, -0.235, 1, 1, 1);
+      head.add(eye);
+    }
   }
 
   let glowStick: THREE.Mesh | null = null;
@@ -195,6 +218,17 @@ export function createLowPolyPerson(options: CharacterOptions = {}): PersonRig {
     object.castShadow = object !== shadow;
     object.receiveShadow = object !== shadow;
   });
+
+  const outlines: THREE.Mesh[] = [];
+  if (anime) {
+    const targets: THREE.Mesh[] = [];
+    group.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      if (object === shadow || object === glowStick || object === face) return;
+      targets.push(object);
+    });
+    for (const mesh of targets) outlines.push(addOutline(mesh));
+  }
 
   return {
     rigVersion: 2,
@@ -233,6 +267,7 @@ export function createLowPolyPerson(options: CharacterOptions = {}): PersonRig {
     leftFoot: leftLeg.foot,
     rightFoot: rightLeg.foot,
     glowStick,
+    outlines,
   };
 }
 
@@ -335,6 +370,46 @@ function addHair(
     setHeadChildTransform(tail, side * 0.23, -0.13, 0.235, 1, 1, 1);
     tail.rotation.z = side * -0.45;
     head.add(tail);
+  }
+}
+
+function makeFaceMaterial(eyeColor: number): THREE.MeshToonMaterial {
+  const material = makeToonMaterial(0xffffff);
+  material.map = getFaceTexture(eyeColor);
+  material.transparent = true;
+  // Decal shell sits 2.5mm off the skull; skip depth writes to avoid z-fighting.
+  material.depthWrite = false;
+  return material;
+}
+
+/** Head sphere radius in the head mesh's own space, before the head scale. */
+const HEAD_RADIUS = 0.27;
+const FRINGE_ROOT_Y = 0.175;
+const FRINGE_AZIMUTHS = [-0.68, -0.34, 0, 0.34, 0.68];
+const STRAND_HALF_LENGTH = 0.0875;
+const STRAND_ROOT_EMBED = 0.035;
+
+/** Pointed fringe strands over the brow — the anime silhouette cue. */
+function addAnimeFringe(head: THREE.Mesh, hairMaterial: THREE.Material): void {
+  const ringRadius = Math.sqrt(HEAD_RADIUS ** 2 - FRINGE_ROOT_Y ** 2);
+  const up = new THREE.Vector3(0, 1, 0);
+
+  for (const azimuth of FRINGE_AZIMUTHS) {
+    const root = new THREE.Vector3(
+      Math.sin(azimuth) * ringRadius,
+      FRINGE_ROOT_Y,
+      -Math.cos(azimuth) * ringRadius,
+    );
+    // Hang downward but follow the skull outward, so the tips clear the brow.
+    const direction = new THREE.Vector3(0, -1, 0)
+      .addScaledVector(root.clone().divideScalar(HEAD_RADIUS), 0.5)
+      .normalize();
+
+    const strand = new THREE.Mesh(geometries.hairStrand, hairMaterial);
+    strand.name = "hair-strand";
+    strand.quaternion.setFromUnitVectors(up, direction);
+    strand.position.copy(root).addScaledVector(direction, STRAND_HALF_LENGTH - STRAND_ROOT_EMBED);
+    head.add(strand);
   }
 }
 

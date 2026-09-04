@@ -24,6 +24,8 @@ try {
       setMoshPhase: (progress) => app.debugSetMoshPhase(progress),
       setCameraYaw: (yaw) => app.debugSetCameraYaw(yaw),
       setCameraView: (yaw, pitch) => app.debugSetCameraView(yaw, pitch),
+      setIdolCount: (count) => app.setIdolCount(count),
+      loadVenue: (venueDef) => app.loadVenue(venueDef),
     };
   }
   app.start();

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { ENABLE_YOUTUBE } from "../config/features";
-import { GENERIC_VENUE } from "../config/venue";
+import { GENERIC_VENUE, NGAU_TAU_KOK_VENUE, type VenueDefinition } from "../config/venue";
 import { combineMovementInputs, KeyboardInput } from "../input/KeyboardInput";
 import { BeatButton } from "../input/BeatButton";
 import { JumpPointButton } from "../input/JumpPointButton";
@@ -26,6 +26,7 @@ import { PlayerController } from "../player/PlayerController";
 import type { TwoStepPose } from "../player/TwoStepAction";
 import { createLowPolyPerson, DENIM_JEANS } from "../scene/createCharacter";
 import { createVenue, type VenueBuild } from "../scene/createVenue";
+import { MAX_IDOL_COUNT } from "../show/idolMembers";
 import { ShowController } from "../show/ShowController";
 import { getFullscreenPresentation } from "../ui/fullscreenMode";
 import { StationSelector, type Station } from "../ui/StationSelector";
@@ -61,6 +62,8 @@ export interface AppSnapshot {
   returningAudienceCount: number;
   knockedPerformerCount: number;
   returningPerformerCount: number;
+  knockedPropCount: number;
+  returningPropCount: number;
   firstActivePerformer: {
     x: number;
     y: number;
@@ -80,7 +83,8 @@ export class App {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(58, 1, 0.1, 100);
   private readonly timer = new THREE.Timer();
-  private readonly venue: VenueBuild;
+  private currentVenueDefinition: VenueDefinition = GENERIC_VENUE;
+  private venue: VenueBuild;
   private readonly joystick: VirtualJoystick;
   private readonly keyboard: KeyboardInput;
   private readonly moshButton: MoshButton;
@@ -88,9 +92,9 @@ export class App {
   private readonly jumpPointButton: JumpPointButton;
   private readonly beatButton: BeatButton;
   private readonly player: PlayerController;
-  private readonly cameraController: CameraController;
-  private readonly showController: ShowController;
-  private readonly youtubePlayer: YouTubePlayer | null;
+  private cameraController: CameraController;
+  private showController: ShowController;
+  private youtubePlayer: YouTubePlayer | null = null;
   private readonly entryScreen = requireElement<HTMLElement>("entry");
   private readonly hud = requireElement<HTMLElement>("hud");
   private readonly enterButton = requireElement<HTMLButtonElement>("enter-button");
@@ -101,6 +105,11 @@ export class App {
   private readonly liftButton = requireElement<HTMLButtonElement>("lift-button");
   private readonly cameraButton = requireElement<HTMLButtonElement>("camera-button");
   private readonly cameraLabel = requireElement<HTMLElement>("camera-label");
+  private readonly houseLightsButton = requireElement<HTMLButtonElement>("house-lights-button");
+  private readonly houseLightsLabel = requireElement<HTMLElement>("house-lights-label");
+  private readonly idolCountButton = requireElement<HTMLButtonElement>("idol-count-button");
+  private readonly idolCountLabel = requireElement<HTMLElement>("idol-count-label");
+  private readonly idolCountPanel = requireElement<HTMLElement>("idol-count-panel");
   private readonly videoButton = requireElement<HTMLButtonElement>("video-button");
   private readonly videoCloseButton = requireElement<HTMLButtonElement>("video-close");
   private readonly videoSeekBackward = requireElement<HTMLButtonElement>("video-seek-backward");
@@ -137,6 +146,8 @@ export class App {
   private qualityElapsed = 0;
   private qualityFrames = 0;
   private reducedQuality = false;
+  private idolCount = MAX_IDOL_COUNT;
+  private readonly playerOutlines: THREE.Mesh[];
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -158,19 +169,23 @@ export class App {
     this.scene.add(this.venue.group);
 
     const playerRig = createLowPolyPerson({
+      style: "anime",
       hairStyle: "short",
       glowStick: true,
-      palette: { top: 0xd6ff3f, bottom: DENIM_JEANS, accent: 0xff2f7d },
+      palette: { top: 0xd6ff3f, bottom: DENIM_JEANS, accent: 0xff2f7d, eye: 0x2f7fd9 },
     });
+    this.playerOutlines = playerRig.outlines;
     this.player = new PlayerController(playerRig, GENERIC_VENUE, this.venue.colliders);
     this.player.setPenlightState(loadPenlightState(window.localStorage));
     this.player.setGameSettings(loadGameSettings(window.localStorage));
     this.scene.add(this.player.group, this.player.lift.group);
     this.showController = new ShowController(
-      this.venue.performerPoints,
+      GENERIC_VENUE.show.performerLine,
       this.venue.audiencePoints,
       this.venue.stageLights,
       GENERIC_VENUE,
+      this.venue.knockableProps,
+      this.idolCount,
     );
     this.scene.add(this.showController.group);
 
@@ -270,6 +285,7 @@ export class App {
     }
 
     this.buildPenlightColorGrid();
+    this.buildIdolCountChips();
     this.syncSettingsControls(this.player.gameSettings);
     this.syncPenlightChrome();
 
@@ -288,10 +304,23 @@ export class App {
       },
     );
 
+    // Check URL parameters for direct preview of venue (e.g. ?station=ngau-tau-kok or ?venue=ngau-tau-kok-hall-01)
+    const urlParams = new URLSearchParams(window.location.search);
+    const requestedStation = urlParams.get("station") ?? (urlParams.get("venue") === "ngau-tau-kok-hall-01" ? "ngau-tau-kok" : null);
+    if (requestedStation) {
+      this.stationSelector.selectStationById(requestedStation, false);
+      if (requestedStation === "ngau-tau-kok") {
+        this.loadVenue(NGAU_TAU_KOK_VENUE);
+      }
+    }
+
     this.enterButton.addEventListener("click", this.handleEnter);
     this.jumpButton.addEventListener("pointerdown", this.handleJump);
     this.liftButton.addEventListener("click", this.handleLiftToggle);
     this.cameraButton.addEventListener("click", this.handleCameraToggle);
+    this.houseLightsButton.addEventListener("click", this.handleHouseLightsToggle);
+    this.idolCountButton.addEventListener("click", this.handleIdolCountToggle);
+    this.syncHouseLightsChrome();
     this.fullscreenButton.addEventListener("click", this.handleFullscreen);
     this.fullscreenGuideClose.addEventListener("click", this.handleFullscreenGuideClose);
     this.penlightButton.addEventListener("click", this.handlePenlightPanelToggle);
@@ -330,6 +359,7 @@ export class App {
     }));
     const audienceStatus = this.showController.getAudienceStatus();
     const performerStatus = this.showController.getPerformerStatus();
+    const propStatus = this.showController.getPropStatus();
     return {
       player: {
         x: this.player.position.x,
@@ -369,6 +399,7 @@ export class App {
       onStage: this.player.groundHeight > GENERIC_VENUE.spawn.y,
       ...audienceStatus,
       ...performerStatus,
+      ...propStatus,
     };
   }
 
@@ -407,6 +438,8 @@ export class App {
     this.jumpButton.removeEventListener("pointerdown", this.handleJump);
     this.liftButton.removeEventListener("click", this.handleLiftToggle);
     this.cameraButton.removeEventListener("click", this.handleCameraToggle);
+    this.houseLightsButton.removeEventListener("click", this.handleHouseLightsToggle);
+    this.idolCountButton.removeEventListener("click", this.handleIdolCountToggle);
     if (ENABLE_YOUTUBE) {
       this.videoButton.removeEventListener("click", this.handleVideoOpen);
       this.videoUrlForm.removeEventListener("submit", this.handleVideoLoad);
@@ -451,7 +484,51 @@ export class App {
     this.stationSelector.handleEnterClick();
   };
 
+  public loadVenue(venueDef: VenueDefinition): void {
+    if (this.currentVenueDefinition.id === venueDef.id && this.venue.group.children.length > 0) return;
+    this.currentVenueDefinition = venueDef;
+
+    // Remove old venue and show objects
+    this.scene.remove(this.venue.group);
+    this.scene.remove(this.showController.group);
+
+    // Create and add new venue
+    this.venue = createVenue(venueDef);
+    this.scene.add(this.venue.group);
+
+    // Reset player position and spawn to new venue
+    this.player.teleportTo(venueDef.spawn.x, venueDef.spawn.y, venueDef.spawn.z, venueDef.spawn.yaw);
+    // Update player's active venue and colliders
+    this.player.setVenue(venueDef, this.venue.colliders);
+
+    // Recreate show controller with new points and lights
+    this.showController = new ShowController(
+      venueDef.show.performerLine,
+      this.venue.audiencePoints,
+      this.venue.stageLights,
+      venueDef,
+      this.venue.knockableProps,
+      this.idolCount,
+    );
+    this.scene.add(this.showController.group);
+
+    // Update camera controller with new venue bounds
+    this.cameraController.setVenue(venueDef, this.venue.colliders);
+    this.syncHouseLightsChrome();
+
+    // Update YouTube player if needed
+    if (this.youtubePlayer && venueDef.youtubeVideoId) {
+      this.youtubePlayer.load(venueDef.youtubeVideoId);
+    }
+  }
+
   private readonly handleEnterWithStation = (station: Station): void => {
+    if (station.id === "ngau-tau-kok") {
+      this.loadVenue(NGAU_TAU_KOK_VENUE);
+    } else if (station.id === "neo-backstage") {
+      this.loadVenue(GENERIC_VENUE);
+    }
+
     this.entered = true;
     this.entryScreen.hidden = true;
     this.hud.hidden = false;
@@ -484,6 +561,67 @@ export class App {
     const mode = this.cameraController.toggleMode();
     this.cameraLabel.textContent = mode === "first" ? "第一人稱" : "第三人稱";
   };
+
+  private readonly handleHouseLightsToggle = (): void => {
+    const houseLights = this.venue.houseLights;
+    if (!houseLights) return;
+    houseLights.setEnabled(!houseLights.enabled);
+    this.syncHouseLightsChrome();
+  };
+
+  /** Shows the house-light toggle only for venues that expose one; label describes the action. */
+  private syncHouseLightsChrome(): void {
+    const houseLights = this.venue.houseLights;
+    this.houseLightsButton.hidden = !houseLights;
+    if (!houseLights) return;
+    const label = houseLights.enabled ? "關燈" : "開燈";
+    this.houseLightsLabel.textContent = label;
+    this.houseLightsButton.setAttribute("aria-label", label);
+    this.houseLightsButton.setAttribute("aria-pressed", String(houseLights.enabled));
+    this.houseLightsButton.classList.toggle("is-active", houseLights.enabled);
+  }
+
+  private readonly handleIdolCountToggle = (): void => {
+    this.setIdolCountPanelOpen(this.idolCountPanel.hasAttribute("hidden"));
+  };
+
+  private setIdolCountPanelOpen(open: boolean): void {
+    this.idolCountPanel.hidden = !open;
+    this.idolCountButton.setAttribute("aria-expanded", String(open));
+    this.idolCountButton.classList.toggle("is-active", open);
+  }
+
+  private buildIdolCountChips(): void {
+    this.idolCountPanel.replaceChildren();
+    for (let count = 1; count <= MAX_IDOL_COUNT; count += 1) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "idol-count-chip";
+      chip.textContent = String(count);
+      chip.setAttribute("role", "option");
+      chip.setAttribute("aria-label", `${count} 人`);
+      chip.dataset.idolCount = String(count);
+      chip.addEventListener("click", () => {
+        this.setIdolCount(count);
+        this.setIdolCountPanelOpen(false);
+      });
+      this.idolCountPanel.append(chip);
+    }
+    this.syncIdolCountChrome();
+  }
+
+  setIdolCount(count: number): void {
+    this.idolCount = Math.max(1, Math.min(MAX_IDOL_COUNT, Math.round(count)));
+    this.showController.setPerformerCount(this.idolCount);
+    this.syncIdolCountChrome();
+  }
+
+  private syncIdolCountChrome(): void {
+    this.idolCountLabel.textContent = `偶像 ${this.idolCount} 人`;
+    this.idolCountPanel.querySelectorAll<HTMLButtonElement>(".idol-count-chip").forEach((chip) => {
+      chip.setAttribute("aria-selected", String(Number(chip.dataset.idolCount) === this.idolCount));
+    });
+  }
 
   private readonly handleVideoOpen = (): void => {
     this.youtubePlayer?.toggle();
@@ -661,6 +799,8 @@ export class App {
     this.reducedQuality = true;
     this.renderer.setPixelRatio(1);
     this.showController.setReducedCrowd(true);
+    this.showController.setPerformerOutlines(false);
+    this.playerOutlines.forEach((shell) => (shell.visible = false));
     this.scene.fog = null;
   }
 
