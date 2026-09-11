@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { VenueDefinition } from "../config/venue";
 import type { Aabb2 } from "../core/collision";
 import { createNgauTauKokVenue } from "./createNgauTauKokVenue";
+import { createKowloonBayVenue } from "./kowloonBay/createKowloonBayVenue";
 
 export interface HouseLights {
   readonly enabled: boolean;
@@ -28,6 +29,10 @@ export function createVenue(definition: VenueDefinition): VenueBuild {
 
   if (definition.scene.builderId === "ngau-tau-kok") {
     return createNgauTauKokVenue(definition);
+  }
+
+  if (definition.scene.builderId === "kowloon-bay") {
+    return createKowloonBayVenue(definition);
   }
 
   if (definition.scene.builderId !== "neon-backstage") {
