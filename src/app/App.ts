@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { ENABLE_YOUTUBE } from "../config/features";
-import { GENERIC_VENUE, NGAU_TAU_KOK_VENUE, type VenueDefinition } from "../config/venue";
+import { GENERIC_VENUE, KOWLOON_BAY_VENUE, NGAU_TAU_KOK_VENUE, type VenueDefinition } from "../config/venue";
 import { combineMovementInputs, KeyboardInput } from "../input/KeyboardInput";
 import { BeatButton } from "../input/BeatButton";
 import { JumpPointButton } from "../input/JumpPointButton";
@@ -31,6 +31,13 @@ import { ShowController } from "../show/ShowController";
 import { getFullscreenPresentation } from "../ui/fullscreenMode";
 import { StationSelector, type Station } from "../ui/StationSelector";
 import { YouTubePlayer } from "../ui/YouTubePlayer";
+
+// Station id (StationSelector) -> venue to load
+const STATION_VENUES: Readonly<Record<string, VenueDefinition>> = {
+  "neo-backstage": GENERIC_VENUE,
+  "ngau-tau-kok": NGAU_TAU_KOK_VENUE,
+  "kowloon-bay": KOWLOON_BAY_VENUE,
+};
 
 export interface AppSnapshot {
   player: { x: number; y: number; z: number };
@@ -304,14 +311,14 @@ export class App {
       },
     );
 
-    // Check URL parameters for direct preview of venue (e.g. ?station=ngau-tau-kok or ?venue=ngau-tau-kok-hall-01)
+    // Check URL parameters for direct preview of a venue (e.g. ?station=kowloon-bay or ?venue=ngau-tau-kok-hall-01)
     const urlParams = new URLSearchParams(window.location.search);
-    const requestedStation = urlParams.get("station") ?? (urlParams.get("venue") === "ngau-tau-kok-hall-01" ? "ngau-tau-kok" : null);
+    const requestedStation =
+      urlParams.get("station") ?? (urlParams.get("venue") === "ngau-tau-kok-hall-01" ? "ngau-tau-kok" : null);
     if (requestedStation) {
       this.stationSelector.selectStationById(requestedStation, false);
-      if (requestedStation === "ngau-tau-kok") {
-        this.loadVenue(NGAU_TAU_KOK_VENUE);
-      }
+      const venue = STATION_VENUES[requestedStation];
+      if (venue) this.loadVenue(venue);
     }
 
     this.enterButton.addEventListener("click", this.handleEnter);
@@ -411,8 +418,8 @@ export class App {
     return this.showController.triggerPerformerKnockback(mode);
   }
 
-  debugPlacePlayer(x: number, z: number): void {
-    this.player.debugPlaceOnGround(x, z);
+  debugPlacePlayer(x: number, z: number, y?: number): void {
+    this.player.debugPlaceOnGround(x, z, y);
   }
 
   debugSetTwoStepPhase(progress: number): void {
@@ -523,11 +530,8 @@ export class App {
   }
 
   private readonly handleEnterWithStation = (station: Station): void => {
-    if (station.id === "ngau-tau-kok") {
-      this.loadVenue(NGAU_TAU_KOK_VENUE);
-    } else if (station.id === "neo-backstage") {
-      this.loadVenue(GENERIC_VENUE);
-    }
+    const venue = STATION_VENUES[station.id];
+    if (venue) this.loadVenue(venue);
 
     this.entered = true;
     this.entryScreen.hidden = true;

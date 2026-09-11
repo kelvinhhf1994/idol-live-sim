@@ -19,7 +19,7 @@ try {
       snapshot: () => app.getSnapshot(),
       triggerAudienceKnockback: (mode) => app.triggerAudienceKnockback(mode),
       triggerPerformerKnockback: (mode) => app.triggerPerformerKnockback(mode),
-      placePlayer: (x, z) => app.debugPlacePlayer(x, z),
+      placePlayer: (x, z, y) => app.debugPlacePlayer(x, z, y),
       setTwoStepPhase: (progress) => app.debugSetTwoStepPhase(progress),
       setMoshPhase: (progress) => app.debugSetMoshPhase(progress),
       setCameraYaw: (yaw) => app.debugSetCameraYaw(yaw),

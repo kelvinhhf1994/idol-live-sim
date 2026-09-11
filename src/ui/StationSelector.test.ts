@@ -24,8 +24,9 @@ describe("StationSelectorState", () => {
 
     expect(STATIONS[0].status).toBe("active");
     expect(STATIONS[1].status).toBe("active");
+    expect(STATIONS[2].status).toBe("active");
 
-    for (let i = 2; i < 5; i++) {
+    for (let i = 3; i < 5; i++) {
       expect(STATIONS[i].status).toBe("coming-soon");
       expect(STATIONS[i].copy).toBe("即將推出");
     }
@@ -50,9 +51,9 @@ describe("StationSelectorState", () => {
   it("never enters coming-soon stations, even after repeated clicks", () => {
     const state = new StationSelectorState({ onEnter, onStationChange, onFeedbackChange });
 
-    state.selectStationById("kowloon-bay");
-    expect(state.getCurrentStation().name).toBe("九龍灣");
-    expect(onStationChange).toHaveBeenCalledWith(STATIONS[2]);
+    state.selectStationById("diamond-hill");
+    expect(state.getCurrentStation().name).toBe("鑽石山");
+    expect(onStationChange).toHaveBeenCalledWith(STATIONS[3]);
 
     for (let click = 0; click < 8; click += 1) {
       const result = state.handleEnterClick();
@@ -62,6 +63,14 @@ describe("StationSelectorState", () => {
 
     expect(onEnter).not.toHaveBeenCalled();
     expect(onFeedbackChange).toHaveBeenCalledWith("即將推出");
+  });
+
+  it("enters 九龍灣 on one click now that it is open", () => {
+    const state = new StationSelectorState({ onEnter, onStationChange, onFeedbackChange });
+    state.selectStationById("kowloon-bay");
+    const result = state.handleEnterClick();
+    expect(result.entered).toBe(true);
+    expect(onEnter).toHaveBeenCalledWith(STATIONS[2]);
   });
 
   it("calculates snap index accurately based on track center", () => {

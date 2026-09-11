@@ -32,8 +32,9 @@ export const STATIONS: readonly Station[] = [
     name: "九龍灣",
     enName: "KOWLOON BAY",
     code: "KOB",
-    status: "coming-soon",
-    copy: "即將推出",
+    status: "active",
+    copy: "樓底特高的黑盒場：truss 花道、台右兩層 backstage，2/F 玻璃房俯瞰舞台。",
+    venueId: "kowloon-bay-live-house-01",
   },
   {
     id: "diamond-hill",
@@ -285,6 +286,7 @@ export class StationSelector {
   }
 
   private handleScrollSnap(): void {
+    if (this.isUserScrolling) return;
     const trackRect = this.elements.track.getBoundingClientRect();
     if (trackRect.width === 0) return;
 
@@ -293,6 +295,14 @@ export class StationSelector {
       const rect = btn.getBoundingClientRect();
       return rect.left + rect.width / 2;
     });
+
+    // On wide screens the track barely scrolls, so an end station can never reach the centre.
+    // If the selected station is unreachable, keep it instead of snapping back to a neighbour.
+    const track = this.elements.track;
+    const maxScrollLeft = track.scrollWidth - track.clientWidth;
+    const currentCenter = centers[this.state.getCurrentStationIndex()] ?? trackCenter;
+    const scrollToCentreCurrent = track.scrollLeft + (currentCenter - trackCenter);
+    if (scrollToCentreCurrent < 0 || scrollToCentreCurrent > maxScrollLeft) return;
 
     const closestIndex = StationSelectorState.calculateSnapIndex(centers, trackCenter);
     if (closestIndex !== this.state.getCurrentStationIndex()) {

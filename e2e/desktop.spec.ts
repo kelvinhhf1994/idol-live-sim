@@ -695,8 +695,8 @@ test("keeps unreleased stations locked without a click-to-unlock easter egg", as
   await page.goto("/");
 
   const stations = page.locator(".metro-station");
-  await stations.nth(2).click();
-  await expect(page.locator("#entry-title")).toContainText("九龍灣");
+  await stations.nth(3).click();
+  await expect(page.locator("#entry-title")).toContainText("鑽石山");
   await expect(page.locator("#station-copy")).toHaveText("即將推出");
   await expect(page.locator("#station-status-badge")).toContainText("即將推出");
 
@@ -710,4 +710,25 @@ test("keeps unreleased stations locked without a click-to-unlock easter egg", as
   await expect(page.locator("#entry")).toBeVisible();
   await expect(page.locator("#hud")).toBeHidden();
   await expect(page.locator("#enter-feedback")).toContainText("即將推出");
+});
+
+test("enters 九龍灣 via the station selector and can stand in the 2/F glass room", async ({ page }) => {
+  test.slow();
+  await page.goto("/?station=kowloon-bay");
+
+  await expect(page.locator("#entry-title")).toContainText("九龍灣");
+  await expect(page.locator("#station-status-badge")).toContainText("現正開放");
+  await page.locator("#enter-button").click();
+  await expect(page.locator("#hud")).toBeVisible();
+  await expect(page.locator("#venue-badge-text")).toContainText("LIVE · 九龍灣");
+  await expect(page.locator("#house-lights-button")).toBeVisible();
+
+  // Spawns on the vestibule floor, under the glass room
+  await expect.poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().player.y)).toBe(0);
+
+  // Debug-place the player on the 2/F glass room deck
+  await page.evaluate(() => window.__liveHouseDebug?.placePlayer(-4.75, 2.6, 3.0));
+  await expect
+    .poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().groundHeight))
+    .toBeCloseTo(3.0, 5);
 });
