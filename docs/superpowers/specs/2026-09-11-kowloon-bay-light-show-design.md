@@ -1,7 +1,7 @@
 # Kowloon Bay — Moving Light Show Design
 
 **Date:** 2026-09-11
-**Status:** Approved by user (approach A, always-on while house lights are off, smooth live-house pacing, moving heads + spots move, PARs colour-only)
+**Status:** Approved by user (approach A, always-on while house lights are off, moving heads + spots move, PARs colour-only). Revised after review: faster pacing for fast songs and a static face fill.
 
 ## Goal
 
@@ -50,10 +50,11 @@ work-light mode). Ngau Tau Kok and the generic venue return no `lightShow` and a
 `update(elapsed)` per fixture:
 
 - **Aim:** `to = homeTo + (sin(elapsed·speed + phase)·ampX, 0, cos(elapsed·speed·0.7 + phase)·ampZ)`.
-  Amplitudes keep stage-bar heads inside the stage footprint (±1.6 m x, ±0.8 m z) and mid-hall heads
-  inside the crowd floor (±2.2 m x, ±1.5 m z). Speeds 0.25–0.45 rad/s so a full sweep takes
-  15–25 s.
-- **Colour:** palette index drifts continuously: `t = elapsed / 6 + fixtureOffset`; colour is
+  Amplitudes keep stage-bar heads inside the stage footprint (±1.6 m x, ±0.8 m z; key spots ±1.4 m x)
+  and mid-hall heads inside the crowd floor (±2.2 m x, ±1.5 m z). Speeds 0.8–1.05 rad/s so a full
+  sweep takes 6–8 s, matching the fast songs the venue mostly plays.
+- **Colour:** palette index drifts continuously: `t = elapsed / COLOR_PERIOD + fixtureOffset` with
+  `COLOR_PERIOD = 2` s (one bar at ~120 BPM); colour is
   `lerp(palette[floor t], palette[floor t + 1], smoothstep(frac t))`. Each fixture has a different
   offset so the rig is never monochrome.
 - Writes: `spot.color`, `spot.target.position`, `fixture.rotation.y`, `head.rotation.x`,
@@ -61,6 +62,12 @@ work-light mode). Ngau Tau Kok and the generic venue return no `lightShow` and a
   colour via `setBeamInstance`.
 
 Constants live at the top of the file; no runtime configuration.
+
+### Face fill
+
+A static neutral `SpotLight` named `face-fill` (0xffe6d6, intensity 22, decay 1.0) hangs on the
+mid-hall pipe and aims at face height (stage + 1.1 m) on the performer line. It is not part of the
+show or `stageLights`, so idols stay readable between sweeping beams without washing out the colour.
 
 ### `ShowController`
 
@@ -75,6 +82,8 @@ Unchanged. Its intensity pulse on `stageLights` continues on top of the colour d
   position differ; a moving head's pan/tilt differs; the beam mesh `instanceMatrix.needsUpdate` is
   set; every stage-bar aim point stays within the stage bounds and every mid-hall aim point stays
   above the hall floor region; PAR face colour changes while its group rotation does not.
-- `createKowloonBayVenue.test.ts`: `build.lightShow` is defined; `createNgauTauKokVenue` /
-  generic `createVenue` leave it undefined.
+- `createKowloonBayVenue.test.ts`: `build.lightShow` is defined; `face-fill` exists, aims at the
+  performer line and does not change under `update`; `createNgauTauKokVenue` / generic
+  `createVenue` leave it undefined.
+- `lightShow.test.ts` also guards pacing: one palette step within 2 s, a full sweep under 8 s.
 - Visual check via `scripts/capture-kowloon-bay-previews.mjs` at two timestamps.
