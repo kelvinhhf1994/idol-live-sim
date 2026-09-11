@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "duration": 1,
+  "targetRig": "person-rig-chibi-idol",
+  "captureMode": "front-facing-2d",
+  "rootMotionMode": "in-place",
+  "timestamps": [0, 0.5, 1],
+  "poses": [
+    {
+      "leftShoulderX": 0.2,
+      "rightShoulderX": 0.2,
+      "leftElbow": 0.4,
+      "rightElbow": 0.4,
+      "bodyPositionX": 0,
+      "leftFootX": -0.14,
+      "rightFootX": 0.14
+    },
+    {
+      "leftShoulderX": 1.2,
+      "rightShoulderX": 0.3,
+      "leftElbow": 1.0,
+      "rightElbow": 0.5,
+      "bodyPositionX": 0.1,
+      "leftFootX": -0.14,
+      "rightFootX": 0.28
+    },
+    {
+      "leftShoulderX": 0.2,
+      "rightShoulderX": 0.2,
+      "leftElbow": 0.4,
+      "rightElbow": 0.4,
+      "bodyPositionX": 0,
+      "leftFootX": -0.14,
+      "rightFootX": 0.14
+    }
+  ]
+}

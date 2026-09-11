@@ -1,0 +1,17 @@
+{
+  "runtime": "pytorch-body25",
+  "notOfficialCppOpenPose": true,
+  "source": "CMU pose_iter_584000.caffemodel via TracelessLe/OpenPose.PyTorch",
+  "weights": "/Users/kelvin/git_workplace/POC/3d-game/scripts/video-to-dance/models/body_pose_model_25.pth",
+  "weightsBytes": 104769966,
+  "vendor": "/Users/kelvin/git_workplace/POC/3d-game/scripts/video-to-dance/vendor/openpose-pytorch",
+  "python": "3.12.8",
+  "torch": "2.14.0",
+  "opencv": "5.0.0",
+  "mpsAvailable": true,
+  "device": "mps",
+  "os": "Darwin 26.6.2 arm64",
+  "smokeTestPassed": true,
+  "smokePeople": 2,
+  "smokeConfidentJoints": 17
+}

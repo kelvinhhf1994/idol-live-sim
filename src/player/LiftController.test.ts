@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { GENERIC_VENUE } from "../config/venue";
 import { createLowPolyPerson } from "../scene/createCharacter";
+import { createWeekendHero } from "../scene/createWeekendHero";
 import { PlayerController } from "./PlayerController";
 
 function createPlayer(): PlayerController {
@@ -15,6 +16,31 @@ function updateFrames(player: PlayerController, count = 180): void {
 }
 
 describe("player lift", () => {
+  it("builds both supporters as Weekend Hero hoodies", () => {
+    const player = createPlayer();
+    expect(
+      player.lift.supporters.every((supporter) => supporter.group.getObjectByName("hoodie")),
+    ).toBe(true);
+    expect(
+      player.lift.supporters.every((supporter) => supporter.group.getObjectByName("sneaker")),
+    ).toBe(true);
+  });
+
+  it("matches supporter height and scale to the lifted character", () => {
+    const playerRig = createWeekendHero({ glowStick: true });
+    const player = new PlayerController(playerRig, GENERIC_VENUE, []);
+    playerRig.group.updateMatrixWorld(true);
+    const playerHeight = new THREE.Box3().setFromObject(playerRig.group).getSize(new THREE.Vector3()).y;
+
+    for (const supporter of player.lift.supporters) {
+      expect(supporter.group.scale.x).toBeCloseTo(playerRig.group.scale.x, 5);
+      expect(supporter.group.scale.y).toBeCloseTo(playerRig.group.scale.y, 5);
+      supporter.group.updateMatrixWorld(true);
+      const supporterHeight = new THREE.Box3().setFromObject(supporter.group).getSize(new THREE.Vector3()).y;
+      expect(supporterHeight).toBeCloseTo(playerHeight, 1);
+    }
+  });
+
   it("raises the player and shows both supporters when activated", () => {
     const player = createPlayer();
 
@@ -24,7 +50,7 @@ describe("player lift", () => {
     expect(player.liftActive).toBe(true);
     expect(player.supporterVisible).toBe(true);
     expect(player.supporterPositions).toHaveLength(2);
-    expect(player.position.y).toBeCloseTo(GENERIC_VENUE.spawn.y + 1.15, 2);
+    expect(player.position.y).toBeCloseTo(GENERIC_VENUE.spawn.y + 0.95, 2);
   });
 
   it("keeps the two supporters in a tight side-by-side formation", () => {
@@ -34,8 +60,8 @@ describe("player lift", () => {
 
     const [left, right] = player.supporterPositions;
 
-    expect(right.x - left.x).toBeGreaterThanOrEqual(0.65);
-    expect(right.x - left.x).toBeLessThanOrEqual(0.85);
+    expect(right.x - left.x).toBeGreaterThanOrEqual(0.5);
+    expect(right.x - left.x).toBeLessThanOrEqual(0.65);
   });
 
   it("places both hands of each supporter against the assigned foot", () => {
@@ -73,7 +99,7 @@ describe("player lift", () => {
     updateFrames(player);
 
     expect(player.jump()).toBe(false);
-    expect(player.position.y).toBeCloseTo(1.9, 2);
+    expect(player.position.y).toBeCloseTo(1.7, 2);
     player.supporterPositions.forEach((position) => {
       expect(position.y).toBeCloseTo(0.75, 2);
     });

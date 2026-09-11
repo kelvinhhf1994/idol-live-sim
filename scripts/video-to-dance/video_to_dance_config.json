@@ -1,0 +1,33 @@
+{
+  "analysisFps": 30,
+  "analysisHeight": 720,
+  "openposeScales": [0.5, 1.0, 1.5],
+  "openposeMinConfidence": 0.15,
+  "interpMaxGapFrames": 5,
+  "uncertainGapFrames": 15,
+  "smoothSigmaFrames": 1.2,
+  "outlierJumpPx": 90,
+  "trackMaxJumpFrac": 0.18,
+  "inPlaceHipWindowSec": 2.0,
+  "contact": {
+    "enterHeight": 0.028,
+    "exitHeight": 0.05,
+    "enterSpeed": 0.38,
+    "exitSpeed": 0.62,
+    "minHoldFrames": 3
+  },
+  "character": {
+    "targetRig": "person-rig-chibi-idol",
+    "pelvisRestY": 0.91,
+    "shoulderWidth": 0.38,
+    "hipWidth": 0.22,
+    "torsoHeight": 0.526,
+    "upperArm": 0.265,
+    "forearm": 0.235,
+    "thigh": 0.43,
+    "shin": 0.4,
+    "ankleHeight": 0.08,
+    "restLeftFootX": -0.14,
+    "restRightFootX": 0.14
+  }
+}

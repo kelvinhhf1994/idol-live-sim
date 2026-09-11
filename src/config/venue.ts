@@ -90,7 +90,7 @@ export const GENERIC_VENUE: VenueDefinition = {
     },
   ],
   show: {
-    performerLine: { y: 0.75, z: -12, spacing: 1.45 },
+    performerLine: { y: 0.75, z: -12, spacing: 0.88 },
     audiencePoints: [
       [-3.6, 0, -7.6], [-1.8, 0, -7.4], [0, 0, -7.6], [1.8, 0, -7.4], [3.6, 0, -7.6],
       [-3.9, 0, -5.5], [-2.1, 0, -5.3], [-0.4, 0, -5.7], [1.4, 0, -5.3], [3.4, 0, -5.6],
@@ -215,7 +215,7 @@ export const NGAU_TAU_KOK_VENUE: VenueDefinition = {
     },
   ],
   show: {
-    performerLine: { y: 0.7, z: -7.7, spacing: 1.15 },
+    performerLine: { y: 0.7, z: -7.7, spacing: 0.78 },
     audiencePoints: [
       [-2.8, 0, -4.5], [-1.4, 0, -4.4], [0, 0, -4.5], [1.4, 0, -4.4], [2.8, 0, -4.5],
       [-3.2, 0, -3.0], [-1.6, 0, -3.1], [0, 0, -2.9], [1.6, 0, -3.1], [3.2, 0, -3.0],

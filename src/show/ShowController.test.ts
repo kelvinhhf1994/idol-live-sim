@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { GENERIC_VENUE } from "../config/venue";
+import { GENERIC_VENUE, NGAU_TAU_KOK_VENUE } from "../config/venue";
+import type { DanceClip } from "../animation/capturedDance";
 import type { PersonRig } from "../scene/createCharacter";
 import type { AudienceKnockbackState } from "./audienceKnockback";
-import { getDancePose, ShowController } from "./ShowController";
+import { ShowController } from "./ShowController";
 
 const noImpact = {
   mode: null,
@@ -24,20 +25,6 @@ interface ShowInternals {
 function internals(show: ShowController): ShowInternals {
   return show as unknown as ShowInternals;
 }
-
-describe("getDancePose", () => {
-  it("repeats after one four-second phrase", () => {
-    expect(getDancePose(0.7, 0)).toEqual(getDancePose(4.7, 0));
-  });
-
-  it("adds a small phase offset between idols", () => {
-    const first = getDancePose(1, 0);
-    const fifth = getDancePose(1, 4);
-
-    expect(fifth.armSwing).not.toBeCloseTo(first.armSwing);
-    expect(Math.abs(fifth.bodyBounce - first.bodyBounce)).toBeLessThan(0.2);
-  });
-});
 
 describe("ShowController decorative prop impacts", () => {
   const performerLine = { y: 0, z: -8, spacing: 1 };
@@ -114,17 +101,64 @@ describe("ShowController V2 joint animation", () => {
     (_, index) => new THREE.Vector3((index % 7) - 3, 0, Math.floor(index / 7)),
   );
 
-  it("keeps seven idols and exactly twelve runtime audience rigs", () => {
+  it("keeps twelve idols and exactly twelve runtime audience rigs", () => {
     const show = new ShowController(performers, audience, [], GENERIC_VENUE);
 
-    expect(internals(show).performers).toHaveLength(7);
-    expect(show.getPerformerCount()).toBe(7);
+    expect(internals(show).performers).toHaveLength(12);
+    expect(show.getPerformerCount()).toBe(12);
     expect(internals(show).audience).toHaveLength(12);
     expect(
       [...internals(show).performers, ...internals(show).audience].every(
         (character) => character.rig.rigVersion === 2,
       ),
     ).toBe(true);
+    expect(
+      internals(show).audience.every((member) =>
+        member.rig.group.getObjectByName("hoodie"),
+      ),
+    ).toBe(true);
+    expect(
+      internals(show).audience.every((member) => member.rig.glowStick !== null),
+    ).toBe(true);
+    const audienceHair = new Set(
+      internals(show).audience.map((member) => {
+        if (member.rig.head.getObjectByName("ponytail")) return "ponytail";
+        if (member.rig.head.getObjectByName("hair-bun")) return "double-bun";
+        if (member.rig.head.getObjectByName("hair-tuft")) return "tuft";
+        if (member.rig.head.getObjectByName("curl")) return "curly";
+        if (member.rig.head.getObjectByName("hair-clip")) return "bob-or-long";
+        return "other";
+      }),
+    );
+    expect(audienceHair.size).toBeGreaterThan(3);
+  });
+
+  it("keeps idols facing the audience in every live house", () => {
+    const lines = [
+      GENERIC_VENUE.show.performerLine,
+      NGAU_TAU_KOK_VENUE.show.performerLine,
+    ];
+
+    for (const line of lines) {
+      const show = new ShowController(line, [], [], GENERIC_VENUE);
+      show.setPerformerCount(12);
+      for (const elapsed of [0.17, 6, 14]) {
+        show.update(elapsed, 1 / 60, noImpact);
+
+        for (const member of internals(show).performers) {
+          const rig = member.rig;
+          expect(rig.group.rotation.y).toBeCloseTo(0, 5);
+          expect(rig.body.rotation.y).toBeCloseTo(0, 5);
+          rig.group.updateMatrixWorld(true);
+          const eye = rig.head.getObjectByName("eye");
+          expect(eye).toBeDefined();
+          const headWorld = rig.head.getWorldPosition(new THREE.Vector3());
+          const eyeWorld = eye!.getWorldPosition(new THREE.Vector3());
+          expect(eyeWorld.z - headWorld.z).toBeGreaterThan(0.04);
+          expect(headWorld.z).toBeLessThan(0);
+        }
+      }
+    }
   });
 
   it("dances idols through shoulders, elbows, hips, knees, and ankles", () => {
@@ -132,12 +166,11 @@ describe("ShowController V2 joint animation", () => {
     show.update(0.17, 1 / 60, noImpact);
     const rig = internals(show).performers[0].rig;
 
-    expect(Math.abs(rig.leftShoulder.rotation.x)).toBeGreaterThan(0.1);
-    expect(rig.leftElbow.rotation.x).toBeGreaterThan(0.1);
-    expect(rig.rightElbow.rotation.x).toBeGreaterThan(0.1);
+    expect(rig.leftShoulder.rotation.x).toBeLessThan(-0.1);
+    expect(rig.leftElbow.rotation.x).toBeLessThan(-0.1);
+    expect(rig.rightElbow.rotation.x).toBeLessThan(0);
     expect(Math.abs(rig.leftHip.rotation.x)).toBeGreaterThan(0.05);
-    expect(rig.leftKnee.rotation.x).toBeLessThan(-0.05);
-    expect(Math.abs(rig.leftFootPivot.rotation.x)).toBeGreaterThan(0.03);
+    expect(rig.leftKnee.rotation.x).toBeGreaterThan(0.05);
     expect(Math.abs(rig.body.rotation.y)).toBeLessThan(0.001);
     expect(Math.abs(rig.pelvis.rotation.y)).toBeGreaterThan(0.01);
   });
@@ -291,10 +324,7 @@ describe("ShowController idol line-up size", () => {
       true,
       true,
       true,
-      false,
-      false,
-      false,
-      false,
+      ...Array.from({ length: 9 }, () => false),
     ]);
     const xs = performers.slice(0, 3).map((performer) => performer.rig.group.position.x);
     expect(xs).toEqual([-1.45, 0, 1.45]);
@@ -308,18 +338,70 @@ describe("ShowController idol line-up size", () => {
     expect(internals(show).performers[0].rig.group.position.x).toBe(0);
 
     show.setPerformerCount(99);
-    expect(show.getPerformerCount()).toBe(7);
+    expect(show.getPerformerCount()).toBe(12);
   });
 
   it("leaves hidden members out of dancing and knockback", () => {
     const show = new ShowController(performerLine, [], [], GENERIC_VENUE, [], 2);
     const hidden = internals(show).performers[6];
 
-    for (let count = 0; count < 7; count += 1) {
+    for (let count = 0; count < 12; count += 1) {
       expect(show.triggerPerformerKnockback("mosh")).toBe(count < 2);
     }
     show.update(0.17, 1 / 60, noImpact);
     expect(hidden.knockback.phase).toBe("home");
     expect(hidden.rig.leftElbow.rotation.x).toBe(0);
+  });
+});
+
+describe("ShowController song performance", () => {
+  const performerLine = { y: 0.75, z: -8, spacing: 0.95 };
+  const clip: DanceClip = {
+    schemaVersion: 1,
+    duration: 1,
+    targetRig: "person-rig-chibi-idol",
+    captureMode: "front-facing-2d",
+    rootMotionMode: "in-place",
+    timestamps: [0, 0.5, 1],
+    poses: [
+      { leftShoulderX: 0.2, rightShoulderX: 0.2, leftElbow: 0.4, bodyPositionX: 0 },
+      { leftShoulderX: 1.5, rightShoulderX: 0.3, leftElbow: 1.2, bodyPositionX: 0.1 },
+      { leftShoulderX: 0.2, rightShoulderX: 0.2, leftElbow: 0.4, bodyPositionX: 0 },
+    ],
+  };
+
+  it("plays the captured clip for all on-stage idols without stagger", () => {
+    const show = new ShowController(performerLine, [], [], GENERIC_VENUE, [], 3);
+    show.setPerformance({ clip, time: 0.25, loop: true });
+    show.update(99, 1 / 60, noImpact);
+
+    const [a, b] = internals(show).performers;
+    expect(a.rig.leftShoulder.rotation.x).toBeCloseTo(b.rig.leftShoulder.rotation.x, 5);
+    expect(a.rig.leftShoulder.rotation.x).toBeLessThan(-0.6);
+  });
+
+  it("freezes on the song time while paused (still captured, not procedural)", () => {
+    const show = new ShowController(performerLine, [], [], GENERIC_VENUE, [], 1);
+    show.setPerformance({ clip, time: 0.25, loop: true });
+    show.update(0, 1 / 60, noImpact);
+    const frozen = internals(show).performers[0].rig.leftShoulder.rotation.x;
+
+    show.setPerformance({ clip, time: 0.25, loop: true });
+    show.update(10, 1 / 60, noImpact);
+    expect(internals(show).performers[0].rig.leftShoulder.rotation.x).toBeCloseTo(frozen, 5);
+  });
+
+  it("returns to procedural dance after clearing performance", () => {
+    const show = new ShowController(performerLine, [], [], GENERIC_VENUE, [], 1);
+    show.setPerformance({ clip, time: 0.25, loop: true });
+    show.update(0, 1 / 60, noImpact);
+    const captured = internals(show).performers[0].rig.leftShoulder.rotation.x;
+
+    show.setPerformance(null);
+    show.update(0.17, 1 / 60, noImpact);
+    expect(internals(show).performers[0].rig.leftShoulder.rotation.x).not.toBeCloseTo(
+      captured,
+      2,
+    );
   });
 });

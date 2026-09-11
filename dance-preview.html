@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dance capture preview</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #f3e6d4;
+        --muted: #b9a38c;
+        --panel: #1c1814;
+        --line: #3a3128;
+        --accent: #e39a56;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: #0f0d0b; color: var(--ink); font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif; }
+      body { display: grid; grid-template-rows: auto 1fr auto; }
+      header, footer { padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
+      footer { border-bottom: 0; border-top: 1px solid var(--line); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+      h1 { margin: 0; font-size: 20px; letter-spacing: 0.04em; }
+      #status { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+      main { display: grid; grid-template-columns: 1fr 1fr; min-height: 0; }
+      .pane { position: relative; min-height: 0; background: #100e0c; }
+      video, #stage, #stage canvas { width: 100%; height: 100%; object-fit: contain; background: #100e0c; }
+      #overlay-video { position: absolute; inset: 0; opacity: 0.92; pointer-events: none; }
+      button, select { background: #2a231c; color: var(--ink); border: 1px solid #5a4634; border-radius: 4px; padding: 6px 10px; font: inherit; }
+      button:hover { border-color: var(--accent); }
+      #seek { flex: 1; min-width: 160px; }
+      label { color: var(--muted); font-size: 13px; display: flex; gap: 6px; align-items: center; }
+      #time { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--accent); }
+      @media (max-width: 860px) {
+        main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Capture preview</h1>
+      <p id="status">準備中</p>
+    </header>
+    <main>
+      <section class="pane" aria-label="Source video">
+        <video id="source-video" playsinline></video>
+        <video id="overlay-video" playsinline hidden></video>
+      </section>
+      <section class="pane" id="stage" aria-label="Character"></section>
+    </main>
+    <footer>
+      <button id="play" type="button">播放</button>
+      <button id="restart" type="button">重頭</button>
+      <label>速度
+        <select id="speed">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </label>
+      <label><input id="show-overlay" type="checkbox" /> OpenPose overlay</label>
+      <input id="seek" type="range" min="0" max="100" value="0" step="0.05" />
+      <span id="time">0:00.00</span>
+    </footer>
+    <script type="module" src="/src/preview/dancePreview.ts"></script>
+  </body>
+</html>

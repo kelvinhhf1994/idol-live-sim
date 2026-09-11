@@ -4,7 +4,7 @@ import { GENERIC_VENUE } from "../config/venue";
 import { createLowPolyPerson, GLOW_STICK_HEIGHT } from "../scene/createCharacter";
 import { calculateWorldMovement, getMoshPose, PlayerController } from "./PlayerController";
 import { DEFAULT_GAME_SETTINGS } from "./gameSettings";
-import { BEAT_ARM_READY, BEAT_ARM_THRUST } from "./penlight";
+import { BEAT_ARM_READY, BEAT_ARM_THRUST, PENLIGHT_ARM_RAISE } from "./penlight";
 
 describe("calculateWorldMovement", () => {
   it("moves forward relative to a zero-yaw camera", () => {
@@ -212,6 +212,7 @@ describe("PlayerController", () => {
   it("uses deep knee flexion for the two-step butt-kick with back extension", () => {
     const rig = createLowPolyPerson();
     const player = new PlayerController(rig, GENERIC_VENUE, []);
+    player.setPenlightState({ colorId: "pink", pose: "idle" });
     player.debugSetTwoStepPhase(0.25);
     for (let frame = 0; frame < 30; frame += 1) {
       player.update(1 / 60, { x: 0, y: 0 }, 0, true);
@@ -484,6 +485,7 @@ describe("PlayerController", () => {
   it("walks with swing and support knee flexion plus flat-foot ankle compensation", () => {
     const rig = createLowPolyPerson();
     const player = new PlayerController(rig, GENERIC_VENUE, []);
+    player.setPenlightState({ colorId: "pink", pose: "idle" });
 
     player.update(0.1, { x: 0, y: -1 }, 0, true);
 
@@ -549,7 +551,6 @@ describe("PlayerController", () => {
     const material = rig.glowStick!.material as THREE.MeshStandardMaterial;
     expect(material.emissive.getHex()).toBe(0x3ad7ff);
 
-    player.togglePenlightPose("raise");
     expect(player.penlight.pose).toBe("raise");
     expect(player.penlightPoseActive).toBe(true);
     expect(Math.abs(rig.glowStick!.rotation.x)).toBeGreaterThan(2.5);
@@ -559,21 +560,19 @@ describe("PlayerController", () => {
     // One frame while walking still blends toward the vertical target.
     expect(rig.rightShoulder.rotation.x).toBeGreaterThan(1.5);
 
-    // After settling: straight vertical raise (~π on X); arm must not lean left via Z.
+    // After settling: temple-side raise, below vertical so the arm misses the skull.
     for (let i = 0; i < 40; i += 1) player.update(0.05, { x: 0, y: 0 }, 0, true);
-    expect(Math.abs(rig.rightShoulder.rotation.x - Math.PI)).toBeLessThan(0.1);
-    expect(Math.abs(rig.rightShoulder.rotation.z)).toBeLessThan(0.08);
-    expect(Math.abs(rig.rightShoulder.rotation.y)).toBeLessThan(0.08);
-    expect(Math.abs(rig.rightElbow.rotation.x)).toBeLessThan(0.1);
+    expect(Math.abs(rig.rightShoulder.rotation.x - PENLIGHT_ARM_RAISE.rightShoulderX)).toBeLessThan(0.1);
+    expect(Math.abs(rig.rightShoulder.rotation.z - PENLIGHT_ARM_RAISE.rightShoulderZ)).toBeLessThan(0.08);
+    expect(Math.abs(rig.rightShoulder.rotation.y - PENLIGHT_ARM_RAISE.rightShoulderY)).toBeLessThan(0.08);
+    expect(Math.abs(rig.rightElbow.rotation.x - PENLIGHT_ARM_RAISE.rightElbow)).toBeLessThan(0.1);
     rig.group.updateMatrixWorld(true);
     const handWorld = rig.rightHand.getWorldPosition(new THREE.Vector3());
     const tipWorld = rig.glowStick!.localToWorld(new THREE.Vector3(0, GLOW_STICK_HEIGHT, 0));
     const hand = rig.group.worldToLocal(handWorld.clone());
     const tip = rig.group.worldToLocal(tipWorld.clone());
-    // Tip above hand; stick tilt (not arm lean) provides left / forward bias.
-    expect(tip.y).toBeGreaterThan(hand.y + 0.12);
-    expect(tip.x).toBeLessThan(hand.x - 0.1);
-    expect(-(tip.z - hand.z)).toBeGreaterThan(0.05);
+    // Tip above hand.
+    expect(tip.y).toBeGreaterThan(hand.y + 0.1);
 
     player.startMosh();
     player.update(0.05, { x: 0, y: 0 }, 0, true);
@@ -641,6 +640,9 @@ describe("PlayerController", () => {
     expect(player.penlight.pose).toBe("beat");
     expect(player.beatActive).toBe(true);
     expect(player.beatHeld).toBe(true);
+
+    // Settle arm from wide wiper pose toward beat pose
+    for (let i = 0; i < 5; i += 1) player.update(0.05, { x: 0, y: 0 }, 0, true);
 
     // Sample one full slow cycle: elbow flexes between ready (~2.0) and peak thrust (~0.7).
     const elbowSamples: number[] = [];

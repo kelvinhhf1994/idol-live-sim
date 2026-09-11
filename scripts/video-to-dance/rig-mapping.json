@@ -1,0 +1,56 @@
+{
+  "targetRig": "person-rig-chibi-idol",
+  "constructor": "createChibiIdol",
+  "applyPath": "applyIdolDancePose",
+  "rigVersion": 2,
+  "axes": {
+    "right": "+X",
+    "up": "+Y",
+    "forward": "+Z",
+    "image": "x-right y-down",
+    "imageToCharacterX": "negated so anatomical L/R of a facing-camera dancer map to character left/right",
+    "armOrbit": "unwrap hang-down atan2 then map through sin/cos so overhead circles do not reverse",
+    "audienceFacing": "shoulder X >= 0.18 toward +Z; feet uncrossed; foot Z <= 0.02; no K-pose",
+    "facing": "character faces +Z toward the camera/audience; front-facing-2d keeps chestY and pelvisTwist at 0"
+  },
+  "units": "meters",
+  "pelvisRestY": 0.91,
+  "groupScale": {
+    "note": "createChibiIdol scales the group (CHIBI 0.86/0.7/0.86). Foot targets stay in pre-scale group space, same as idolDance.ts.",
+    "x": 0.86,
+    "y": 0.7,
+    "z": 0.86
+  },
+  "boneLengths": {
+    "upperArm": 0.265,
+    "forearm": 0.235,
+    "thigh": 0.43,
+    "shin": 0.4,
+    "ankleHeight": 0.08,
+    "shoulderWidth": 0.38,
+    "hipWidth": 0.22
+  },
+  "jointOwnership": {
+    "torsoAndArms": "exported PersonPose Euler channels",
+    "legs": "runtime plantFoot IK — do not also bake hip/knee Euler from capture",
+    "feet": "group-space targets leftFootX/Y/Z rightFootX/Y/Z",
+    "root": "bodyPositionX and bodyY; body.position.z stays 0 in applyIdolDancePose"
+  },
+  "hinges": {
+    "elbows": "one-axis rotation.x; applyIdolDancePose writes -elbow",
+    "knees": "one-axis, solved by plantFoot"
+  },
+  "armSign": "PersonPose shoulder/elbow X is the idolDance convention: positive X raises a hanging arm forward. applyIdolDancePose negates X. Shoulder Euler order is XYZ (R = Rx(-X) Ry(Y) Rz(Z)); upper arm = R*(0,-1,0), elbow bends toward R*(0,0,1). arm_retarget.py fits X/Y/Z to the observed upper-arm direction and elbow bend plane; values are unwrapped, so |Z| may exceed pi.",
+  "bodyYaw": "applyIdolDancePose currently writes body.rotation.y = 0. front-facing-2d keeps pose.bodyYaw at 0.",
+  "sourceLandmarks": {
+    "root": "MidHip",
+    "chest": "Neck vs MidHip and shoulder/hip lines",
+    "head": "Nose vs Neck",
+    "leftArm": ["LShoulder", "LElbow", "LWrist"],
+    "rightArm": ["RShoulder", "RElbow", "RWrist"],
+    "leftFoot": ["LHeel", "LAnkle", "LBigToe"],
+    "rightFoot": ["RHeel", "RAnkle", "RBigToe"]
+  },
+  "localRotationConvention": "person-pose-euler-complete",
+  "quaternionOrder": ["x", "y", "z", "w"]
+}

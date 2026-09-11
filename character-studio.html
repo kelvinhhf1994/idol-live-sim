@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Character Studio — Little Weekend</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #eee8df;
+      color: #393631;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+    canvas { display: block; touch-action: none; }
+    header {
+      position: absolute;
+      top: 28px;
+      left: 32px;
+      pointer-events: none;
+      max-width: min(420px, 70vw);
+    }
+    .eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      color: #82796d;
+      text-transform: uppercase;
+    }
+    h1 { font-size: clamp(22px, 4vw, 36px); letter-spacing: -1.5px; margin: 8px 0; }
+    header p { margin: 0; color: #82796d; font-size: 13px; line-height: 1.45; }
+    .hint { position: absolute; right: 28px; top: 34px; color: #82796d; font-size: 12px; }
+    .panel {
+      position: absolute;
+      bottom: 26px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border: 1px solid #ffffffaa;
+      border-radius: 24px;
+      background: #ffffffb8;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 12px 40px #52473512;
+      max-width: calc(100vw - 24px);
+      overflow-x: auto;
+    }
+    .chip {
+      border: 0;
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: #fff;
+      color: #5d574f;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      outline: 1px solid #00000012;
+    }
+    .chip[aria-pressed="true"] { outline: 2px solid #514c45; }
+    #spin {
+      margin-left: 4px;
+      border: 0;
+      border-left: 1px solid #ddd5cb;
+      padding: 7px 0 7px 14px;
+      background: transparent;
+      color: #5d574f;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    @media (max-width: 600px) {
+      header { top: 18px; left: 18px; }
+      .hint { display: none; }
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Character studio</div>
+    <h1>Little Weekend line-up.</h1>
+    <p>Edit the <code>CHARACTERS</code> array in this file. Duplicate an object, change colors or body numbers, reload.</p>
+  </header>
+  <div class="hint">Drag to orbit · Scroll to zoom</div>
+  <div class="panel" id="panel"></div>
+
+<script type="module">
+  import * as THREE from "three";
+  import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+  import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+
+  // =====================================================================
+  // SHARED PROPORTIONS
+  //
+  // headUnit = face/head height, excluding hairstyle.
+  // headCount = approximate standing height in head units.
+  //
+  // All characters share the same skeleton proportions.
+  // Change these values to tune the entire collection.
+  // =====================================================================
+
+  const PROPORTIONS = {
+    headUnit: 0.60,
+    headCount: 2.70,
+
+    shoulderWidth: 0.94,
+    hipWidth: 0.39,
+
+    upperArm: 0.36,
+    forearm: 0.32,
+
+    thigh: 0.40,
+    shin: 0.36,
+    ankleHeight: 0.10,
+
+    torsoWidth: 0.91,
+    torsoDepth: 0.63,
+  };
+
+  const DEFAULT_PERSON = {
+    id: "mint",
+    name: "Mint",
+    gender: "girl",
+    hairstyle: "bob",
+    scale: 1,
+    glowStick: false,
+    body: {},
+    colors: {
+      skin: "#f0bd98",
+      blush: "#e99b8b",
+      hair: "#45312b",
+      hairLight: "#594035",
+      hoodie: "#8bbfaf",
+      ribbing: "#78aa99",
+      pants: "#3e4a61",
+      denimCuff: "#526077",
+      cream: "#fff5e5",
+      sole: "#e7dece",
+      ink: "#302926",
+      accent: "#ff719a",
+    },
+  };
+
+  // =====================================================================
+  // 5 GIRLS + 5 BOYS
+  //
+  // Gender is lineup metadata; everyone uses the same proportion system.
+  // Hairstyles and colors can be assigned freely.
+  // Optional body overrides use keys from PROPORTIONS above.
+  // =====================================================================
+
+  const CHARACTERS = [
+    {
+      id: "mint",
+      name: "Mint",
+      gender: "girl",
+      hairstyle: "bob",
+      colors: {
+        hoodie: "#8bbfaf",
+        ribbing: "#78aa99",
+      },
+    },
+    {
+      id: "lavender",
+      name: "Lavender",
+      gender: "girl",
+      hairstyle: "ponytail",
+      colors: {
+        skin: "#d99b76",
+        hair: "#342927",
+        hairLight: "#4b3730",
+        hoodie: "#c2a2cf",
+        ribbing: "#a888b4",
+        accent: "#f3d4ef",
+      },
+    },
+    {
+      id: "peach",
+      name: "Peach",
+      gender: "girl",
+      hairstyle: "double-bun",
+      colors: {
+        skin: "#f3c7a6",
+        hair: "#76503b",
+        hairLight: "#916247",
+        hoodie: "#e3a080",
+        ribbing: "#c9886c",
+        pants: "#665970",
+        denimCuff: "#7d6f88",
+        accent: "#ffe6b0",
+      },
+    },
+    {
+      id: "rose",
+      name: "Rose",
+      gender: "girl",
+      hairstyle: "long",
+      colors: {
+        skin: "#a96f50",
+        blush: "#c77f73",
+        hair: "#302526",
+        hairLight: "#483235",
+        hoodie: "#d9a0b3",
+        ribbing: "#bd8298",
+        pants: "#53576e",
+        accent: "#f8dfbf",
+      },
+    },
+    {
+      id: "lemon",
+      name: "Lemon",
+      gender: "girl",
+      hairstyle: "pixie",
+      colors: {
+        hair: "#a57b48",
+        hairLight: "#bf965d",
+        hoodie: "#dec887",
+        ribbing: "#bfa967",
+        pants: "#66756d",
+        denimCuff: "#809184",
+        accent: "#fff0cc",
+      },
+    },
+
+    {
+      id: "sky",
+      name: "Sky",
+      gender: "boy",
+      hairstyle: "side-part",
+      colors: {
+        hoodie: "#8eaed1",
+        ribbing: "#7694b6",
+        hair: "#49352e",
+        hairLight: "#63483a",
+      },
+    },
+    {
+      id: "sage",
+      name: "Sage",
+      gender: "boy",
+      hairstyle: "crop",
+      colors: {
+        skin: "#c08a64",
+        hair: "#302927",
+        hairLight: "#463933",
+        hoodie: "#a2b493",
+        ribbing: "#82966f",
+        pants: "#62584d",
+        denimCuff: "#7c7061",
+      },
+    },
+    {
+      id: "cocoa",
+      name: "Cocoa",
+      gender: "boy",
+      hairstyle: "curly",
+      colors: {
+        skin: "#915e43",
+        blush: "#b77266",
+        hair: "#30231f",
+        hairLight: "#4a3329",
+        hoodie: "#bd9b80",
+        ribbing: "#9e7c63",
+        pants: "#465366",
+        denimCuff: "#607087",
+      },
+    },
+    {
+      id: "coral",
+      name: "Coral",
+      gender: "boy",
+      hairstyle: "tuft",
+      colors: {
+        skin: "#f3c4a0",
+        hair: "#865138",
+        hairLight: "#a56844",
+        hoodie: "#d58f83",
+        ribbing: "#b67368",
+        pants: "#5a6172",
+        denimCuff: "#757d90",
+      },
+    },
+    {
+      id: "ocean",
+      name: "Ocean",
+      gender: "boy",
+      hairstyle: "swept",
+      colors: {
+        skin: "#d8a07a",
+        hair: "#343238",
+        hairLight: "#4e4854",
+        hoodie: "#79aaad",
+        ribbing: "#5b8d91",
+        pants: "#424d61",
+        denimCuff: "#5e6c82",
+      },
+    },
+  ];
+
+  // =====================================================================
+  // GEOMETRY HELPERS
+  // =====================================================================
+
+  const sphereGeometry = new THREE.SphereGeometry(1, 24, 18);
+  const materialCache = new Map();
+
+  function clay(color) {
+    if (!materialCache.has(color)) {
+      materialCache.set(
+        color,
+        new THREE.MeshStandardMaterial({
+          color,
+          roughness: 0.82,
+          metalness: 0,
+        }),
+      );
+    }
+    return materialCache.get(color);
+  }
+
+  function mesh(parent, geometry, material, position, name) {
+    const object = new THREE.Mesh(geometry, material);
+    object.name = name;
+    object.position.set(...position);
+    object.castShadow = true;
+    object.receiveShadow = true;
+    parent.add(object);
+    return object;
+  }
+
+  function ellipsoid(parent, material, position, scale, name) {
+    const object = mesh(
+      parent,
+      sphereGeometry,
+      material,
+      position,
+      name,
+    );
+    object.scale.set(...scale);
+    return object;
+  }
+
+  function box(parent, material, position, size, radius, name) {
+    return mesh(
+      parent,
+      new RoundedBoxGeometry(
+        ...size,
+        3,
+        Math.min(radius, Math.min(...size) / 2),
+      ),
+      material,
+      position,
+      name,
+    );
+  }
+
+  function tube(parent, material, points, radius, name) {
+    const curve = new THREE.CatmullRomCurve3(
+      points.map((point) => new THREE.Vector3(...point)),
+    );
+
+    return mesh(
+      parent,
+      new THREE.TubeGeometry(curve, 16, radius, 6, false),
+      material,
+      [0, 0, 0],
+      name,
+    );
+  }
+
+  function bone(parent, name, x = 0, y = 0, z = 0) {
+    const joint = new THREE.Bone();
+    joint.name = name;
+    joint.position.set(x, y, z);
+    parent.add(joint);
+    return joint;
+  }
+
+  function mergePerson(raw) {
+    return {
+      ...DEFAULT_PERSON,
+      ...raw,
+      colors: {
+        ...DEFAULT_PERSON.colors,
+        ...raw.colors,
+      },
+      body: {
+        ...PROPORTIONS,
+        ...raw.body,
+      },
+    };
+  }
+
+  function measurements(body) {
+    const u = body.headUnit;
+    const height = body.headCount * u;
+
+    const ankleY = body.ankleHeight * u;
+    const thigh = body.thigh * u;
+    const shin = body.shin * u;
+    const pelvisY = ankleY + thigh + shin;
+
+    const headY = height - u * 0.5;
+    const neckY = headY - u * 0.46;
+    const torsoHeight = neckY - pelvisY;
+
+    return {
+      u,
+      height,
+      ankleY,
+      thigh,
+      shin,
+      pelvisY,
+      headY,
+      neckY,
+      torsoHeight,
+      chestY: pelvisY + torsoHeight / 2,
+      shoulderX: body.shoulderWidth * u / 2,
+      hipX: body.hipWidth * u / 2,
+      upperArm: body.upperArm * u,
+      forearm: body.forearm * u,
+      torsoWidth: body.torsoWidth * u,
+      torsoDepth: body.torsoDepth * u,
+    };
+  }
+
+  // =====================================================================
+  // CHARACTER / BONE HIERARCHY
+  //
+  // root → pelvis → chest → neck → head
+  //               → shoulder → elbow → wrist
+  //      → hip → knee → ankle → toe
+  //
+  // Meshes are rigidly attached to bones, not skin-weighted.
+  // =====================================================================
+
+  function createPerson(raw) {
+    const config = mergePerson(raw);
+    const b = measurements(config.body);
+    const u = b.u;
+
+    const m = Object.fromEntries(
+      Object.entries(config.colors).map(([key, color]) => [
+        key,
+        clay(color),
+      ]),
+    );
+
+    const group = new THREE.Group();
+    group.name = config.id;
+    group.scale.setScalar(config.scale);
+
+    const root = bone(group, "root");
+    const pelvis = bone(root, "pelvis", 0, b.pelvisY, 0);
+    const chest = bone(
+      pelvis,
+      "chest",
+      0,
+      b.chestY - b.pelvisY,
+      0,
+    );
+    const neck = bone(
+      chest,
+      "neck",
+      0,
+      b.neckY - b.chestY,
+      0,
+    );
+    const head = bone(
+      neck,
+      "head",
+      0,
+      b.headY - b.neckY,
+      0,
+    );
+
+    bone(head, "head-top", 0, u * 0.5, 0);
+
+    addHoodie(chest, m, b);
+
+    ellipsoid(
+      neck,
+      m.skin,
+      [0, u * 0.025, 0],
+      [u * 0.12, u * 0.12, u * 0.12],
+      "neck-skin",
+    );
+
+    // Scale the complete head assembly, including facial features.
+    const face = new THREE.Group();
+    face.scale.setScalar(u / 0.60);
+    head.add(face);
+
+    ellipsoid(
+      face,
+      m.skin,
+      [0, 0, 0],
+      [0.324, 0.30, 0.276],
+      "head-skin",
+    );
+
+    addFace(face, m);
+    addHair(face, m, config.hairstyle);
+
+    const arms = [
+      createArm(chest, -1, m, b),
+      createArm(chest, 1, m, b),
+    ];
+
+    createLeg(pelvis, -1, m, b);
+    createLeg(pelvis, 1, m, b);
+
+    if (config.glowStick) {
+      const glowMaterial = new THREE.MeshStandardMaterial({
+        color: config.colors.accent,
+        emissive: config.colors.accent,
+        emissiveIntensity: 2,
+        roughness: 0.3,
+      });
+
+      const stick = mesh(
+        arms[1].wrist,
+        new THREE.CylinderGeometry(
+          u * 0.035,
+          u * 0.035,
+          u * 0.70,
+          10,
+        ),
+        glowMaterial,
+        [0, u * 0.22, u * 0.08],
+        "glow-stick",
+      );
+      stick.rotation.z = -0.12;
+    }
+
+    return { group, root, head, arms, config, b };
+  }
+
+  function createArm(chest, side, m, b) {
+    const u = b.u;
+
+    const shoulder = bone(
+      chest,
+      side < 0 ? "left-shoulder" : "right-shoulder",
+      side * b.shoulderX,
+      b.torsoHeight * 0.30,
+      0,
+    );
+
+    // Arms angle gently away from the hoodie.
+    shoulder.rotation.z = side * 0.10;
+
+    ellipsoid(
+      shoulder,
+      m.hoodie,
+      [0, -u * 0.045, 0],
+      [u * 0.13, u * 0.14, u * 0.145],
+      "shoulder-sleeve",
+    );
+
+    box(
+      shoulder,
+      m.hoodie,
+      [0, -b.upperArm / 2, 0],
+      [u * 0.235, b.upperArm + u * 0.045, u * 0.26],
+      u * 0.09,
+      "upper-sleeve",
+    );
+
+    const elbow = bone(
+      shoulder,
+      side < 0 ? "left-elbow" : "right-elbow",
+      0,
+      -b.upperArm,
+      0,
+    );
+
+    box(
+      elbow,
+      m.hoodie,
+      [0, -b.forearm * 0.44, 0],
+      [u * 0.215, b.forearm * 0.98, u * 0.24],
+      u * 0.08,
+      "lower-sleeve",
+    );
+
+    box(
+      elbow,
+      m.ribbing,
+      [0, -b.forearm + u * 0.035, 0],
+      [u * 0.215, u * 0.085, u * 0.245],
+      u * 0.03,
+      "sleeve-cuff",
+    );
+
+    const wrist = bone(
+      elbow,
+      side < 0 ? "left-wrist" : "right-wrist",
+      0,
+      -b.forearm,
+      0,
+    );
+
+    ellipsoid(
+      wrist,
+      m.skin,
+      [0, -u * 0.065, u * 0.012],
+      [u * 0.095, u * 0.11, u * 0.095],
+      "hand",
+    );
+
+    return { shoulder, elbow, wrist, side };
+  }
+
+  function createLeg(pelvis, side, m, b) {
+    const u = b.u;
+
+    const hip = bone(
+      pelvis,
+      side < 0 ? "left-hip" : "right-hip",
+      side * b.hipX,
+      0,
+      0,
+    );
+
+    box(
+      hip,
+      m.pants,
+      [0, -b.thigh / 2, 0],
+      [u * 0.265, b.thigh + u * 0.045, u * 0.28],
+      u * 0.075,
+      "upper-pants",
+    );
+
+    const knee = bone(
+      hip,
+      side < 0 ? "left-knee" : "right-knee",
+      0,
+      -b.thigh,
+      0,
+    );
+
+    box(
+      knee,
+      m.pants,
+      [0, -b.shin / 2, 0],
+      [u * 0.245, b.shin + u * 0.02, u * 0.26],
+      u * 0.065,
+      "lower-pants",
+    );
+
+    box(
+      knee,
+      m.denimCuff,
+      [0, -b.shin + u * 0.065, 0],
+      [u * 0.265, u * 0.09, u * 0.285],
+      u * 0.025,
+      "pants-cuff",
+    );
+
+    const ankle = bone(
+      knee,
+      side < 0 ? "left-ankle" : "right-ankle",
+      0,
+      -b.shin,
+      0,
+    );
+
+    bone(ankle, "toe", 0, 0, u * 0.25);
+
+    const shoe = new THREE.Group();
+    shoe.rotation.y = side * 0.055;
+    ankle.add(shoe);
+
+    // Sole bottom is exactly at ground level.
+    box(
+      shoe,
+      m.sole,
+      [0, -b.ankleY + u * 0.025, u * 0.10],
+      [u * 0.34, u * 0.05, u * 0.49],
+      u * 0.024,
+      "sneaker-sole",
+    );
+
+    box(
+      shoe,
+      m.cream,
+      [0, -b.ankleY + u * 0.11, u * 0.10],
+      [u * 0.31, u * 0.15, u * 0.45],
+      u * 0.06,
+      "sneaker",
+    );
+
+    box(
+      shoe,
+      m.ribbing,
+      [0, -b.ankleY + u * 0.13, -u * 0.12],
+      [u * 0.18, u * 0.065, u * 0.035],
+      u * 0.012,
+      "sneaker-heel",
+    );
+
+    for (let i = 0; i < 3; i++) {
+      box(
+        shoe,
+        m.cream,
+        [
+          0,
+          -b.ankleY + u * 0.19,
+          u * (0.025 + i * 0.06),
+        ],
+        [u * 0.17, u * 0.016, u * 0.022],
+        u * 0.007,
+        "shoelace",
+      );
+    }
+  }
+
+  function addHoodie(chest, m, b) {
+    const u = b.u;
+    const w = b.torsoWidth;
+    const h = b.torsoHeight;
+    const d = b.torsoDepth;
+    const front = d / 2;
+
+    box(
+      chest,
+      m.hoodie,
+      [0, 0, 0],
+      [w, h + u * 0.025, d],
+      u * 0.16,
+      "hoodie",
+    );
+
+    box(
+      chest,
+      m.ribbing,
+      [0, -h / 2 + u * 0.025, 0],
+      [w - u * 0.035, u * 0.10, d - u * 0.01],
+      u * 0.035,
+      "hoodie-hem",
+    );
+
+    ellipsoid(
+      chest,
+      m.hoodie,
+      [0, h / 2 - u * 0.015, -u * 0.09],
+      [u * 0.35, u * 0.15, u * 0.27],
+      "hood",
+    );
+
+    ellipsoid(
+      chest,
+      m.ribbing,
+      [0, h / 2, u * 0.005],
+      [u * 0.19, u * 0.055, u * 0.17],
+      "collar",
+    );
+
+    box(
+      chest,
+      m.hoodie,
+      [0, -h * 0.18, front + u * 0.015],
+      [w * 0.49, h * 0.26, u * 0.06],
+      u * 0.045,
+      "hoodie-pocket",
+    );
+
+    box(
+      chest,
+      m.cream,
+      [w * 0.22, h * 0.19, front + u * 0.012],
+      [u * 0.095, u * 0.039, u * 0.018],
+      u * 0.006,
+      "hoodie-label",
+    );
+
+    for (const side of [-1, 1]) {
+      tube(
+        chest,
+        m.cream,
+        [
+          [side * u * 0.075, h / 2, u * 0.15],
+          [side * u * 0.085, h * 0.30, front + u * 0.02],
+          [side * u * 0.075, h * 0.08, front + u * 0.025],
+        ],
+        u * 0.009,
+        "hoodie-string",
+      );
+
+      tube(
+        chest,
+        m.ribbing,
+        [
+          [side * w * 0.21, -h * 0.08, front + u * 0.048],
+          [side * w * 0.18, -h * 0.18, front + u * 0.050],
+          [side * w * 0.18, -h * 0.27, front + u * 0.048],
+        ],
+        u * 0.007,
+        "pocket-stitch",
+      );
+    }
+  }
+
+  // =====================================================================
+  // FACE — local dimensions for a 0.60-unit head
+  // =====================================================================
+
+  function addFace(head, m) {
+    for (const side of [-1, 1]) {
+      ellipsoid(
+        head, m.skin,
+        [side * 0.315, -0.012, 0],
+        [0.057, 0.077, 0.06],
+        "ear",
+      );
+
+      ellipsoid(
+        head, m.blush,
+        [side * 0.337, -0.012, 0.045],
+        [0.024, 0.039, 0.018],
+        "inner-ear",
+      );
+
+      ellipsoid(
+        head, m.ink,
+        [side * 0.096, 0.006, 0.263],
+        [0.023, 0.034, 0.015],
+        "eye",
+      );
+
+      ellipsoid(
+        head, m.cream,
+        [side * 0.096 - 0.007, 0.017, 0.276],
+        [0.007, 0.008, 0.004],
+        "eye-highlight",
+      );
+
+      const cheek = ellipsoid(
+        head, m.blush,
+        [side * 0.166, -0.063, 0.232],
+        [0.042, 0.021, 0.013],
+        "cheek",
+      );
+      cheek.rotation.y = side * 0.48;
+
+      tube(
+        head, m.hair,
+        [
+          [side * 0.096 - 0.025, 0.070, 0.255],
+          [side * 0.096, 0.078, 0.260],
+          [side * 0.096 + 0.025, 0.070, 0.255],
+        ],
+        0.0045,
+        "eyebrow",
+      );
+    }
+
+    ellipsoid(
+      head, m.skin,
+      [0, -0.029, 0.276],
+      [0.026, 0.024, 0.024],
+      "nose",
+    );
+
+    tube(
+      head, m.ink,
+      [
+        [-0.033, -0.084, 0.264],
+        [0, -0.098, 0.264],
+        [0.033, -0.084, 0.264],
+      ],
+      0.004,
+      "smile",
+    );
+  }
+
+  // =====================================================================
+  // HAIRSTYLES
+  // =====================================================================
+
+  function addHair(head, m, style) {
+    const cap = mesh(
+      head,
+      new THREE.SphereGeometry(
+        1, 28, 18,
+        0, Math.PI * 2,
+        0, Math.PI / 2,
+      ),
+      m.hair,
+      [0, 0.055, -0.018],
+      "hair-cap",
+    );
+    cap.scale.set(0.339, 0.279, 0.288);
+
+    ellipsoid(
+      head, m.hair,
+      [0, 0.07, -0.16],
+      [0.31, 0.245, 0.145],
+      "hair-back",
+    );
+
+    const swept = ["side-part", "swept", "pixie"].includes(style);
+    const short = style === "crop";
+
+    if (style !== "curly") {
+      for (let i = 0; i < 5; i++) {
+        const x = (i - 2) * 0.097;
+        const y = short
+          ? 0.225 - Math.abs(i - 2) * 0.018
+          : swept
+            ? 0.17 + i * 0.015
+            : 0.20 - Math.abs(i - 2) * 0.020;
+
+        const lock = ellipsoid(
+          head,
+          i % 2 ? m.hairLight : m.hair,
+          [x, y, 0.205 - Math.abs(i - 2) * 0.013],
+          [
+            swept ? 0.095 : 0.073,
+            short ? 0.065 : 0.10,
+            0.087,
+          ],
+          "fringe",
+        );
+        lock.rotation.z = swept ? -0.42 : (i - 2) * 0.12;
+      }
+    }
+
+    if (style === "bob" || style === "long") {
+      const long = style === "long";
+
+      ellipsoid(
+        head, m.hair,
+        [0, long ? -0.12 : -0.015, -0.17],
+        [0.315, long ? 0.38 : 0.25, 0.16],
+        "back-length",
+      );
+
+      for (const side of [-1, 1]) {
+        ellipsoid(
+          head, m.hair,
+          [side * 0.285, long ? -0.115 : -0.015, -0.025],
+          [0.073, long ? 0.34 : 0.235, 0.17],
+          "side-lock",
+        );
+      }
+
+      box(
+        head, m.accent,
+        [0.245, 0.13, 0.20],
+        [0.065, 0.021, 0.018],
+        0.008,
+        "hair-clip",
+      );
+    }
+
+    if (style === "ponytail") {
+      ellipsoid(
+        head, m.accent,
+        [0.20, 0.20, -0.23],
+        [0.077, 0.067, 0.065],
+        "hair-tie",
+      );
+
+      const tail = ellipsoid(
+        head, m.hair,
+        [0.235, 0.01, -0.29],
+        [0.115, 0.265, 0.13],
+        "ponytail",
+      );
+      tail.rotation.z = 0.22;
+    }
+
+    if (style === "double-bun") {
+      for (const side of [-1, 1]) {
+        ellipsoid(
+          head, m.accent,
+          [side * 0.25, 0.225, -0.035],
+          [0.09, 0.07, 0.09],
+          "bun-tie",
+        );
+
+        ellipsoid(
+          head, m.hair,
+          [side * 0.29, 0.285, -0.055],
+          [0.12, 0.12, 0.115],
+          "hair-bun",
+        );
+
+        ellipsoid(
+          head, m.hairLight,
+          [side * 0.30, 0.31, 0.005],
+          [0.063, 0.053, 0.045],
+          "bun-highlight",
+        );
+      }
+    }
+
+    if (style === "curly") {
+      // Deterministic curls: no random changes after reloading.
+      for (let i = 0; i < 11; i++) {
+        const angle = i / 11 * Math.PI * 2;
+        ellipsoid(
+          head,
+          i % 3 === 0 ? m.hairLight : m.hair,
+          [
+            Math.cos(angle) * 0.255,
+            0.18 + Math.sin(angle) * 0.035,
+            Math.sin(angle) * 0.205,
+          ],
+          [0.094, 0.097, 0.093],
+          "curl",
+        );
+      }
+
+      for (let i = 0; i < 5; i++) {
+        ellipsoid(
+          head,
+          i % 2 ? m.hairLight : m.hair,
+          [(i - 2) * 0.09, 0.285, -0.015],
+          [0.083, 0.08, 0.09],
+          "top-curl",
+        );
+      }
+    }
+
+    if (style === "tuft" || style === "pixie") {
+      const tuft = ellipsoid(
+        head, m.hairLight,
+        [-0.065, 0.315, 0.015],
+        [0.085, 0.105, 0.075],
+        "hair-tuft",
+      );
+      tuft.rotation.z = -0.45;
+    }
+
+    if (style === "swept") {
+      const sweep = ellipsoid(
+        head, m.hairLight,
+        [-0.075, 0.27, 0.135],
+        [0.18, 0.09, 0.10],
+        "top-sweep",
+      );
+      sweep.rotation.z = -0.20;
+    }
+  }
+
+  // =====================================================================
+  // SCENE
+  // =====================================================================
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color("#eee8df");
+  scene.fog = new THREE.Fog("#eee8df", 35, 110);
+
+  const camera = new THREE.PerspectiveCamera(
+    36,
+    innerWidth / innerHeight,
+    0.1,
+    150,
+  );
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  document.body.appendChild(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.enablePan = false;
+  controls.minDistance = 2;
+  controls.maxDistance = 100;
+  controls.maxPolarAngle = Math.PI / 2 - 0.035;
+  controls.autoRotateSpeed = 1.2;
+
+  scene.add(
+    new THREE.HemisphereLight("#fff8ed", "#aaa398", 2.3),
+  );
+
+  const key = new THREE.DirectionalLight("#fff3df", 3.3);
+  key.position.set(-3, 7, 5);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  Object.assign(key.shadow.camera, {
+    left: -6,
+    right: 6,
+    top: 6,
+    bottom: -6,
+    near: 0.5,
+    far: 25,
+  });
+  key.shadow.normalBias = 0.025;
+  key.shadow.camera.updateProjectionMatrix();
+  scene.add(key);
+
+  const rim = new THREE.DirectionalLight("#ffffff", 1.8);
+  rim.position.set(3, 4, -4);
+  scene.add(rim);
+
+  const floor = mesh(
+    scene,
+    new THREE.PlaneGeometry(250, 250),
+    clay("#eee8df"),
+    [0, -0.15, 0],
+    "floor",
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.castShadow = false;
+
+  const lineup = new THREE.Group();
+  scene.add(lineup);
+
+  const people = CHARACTERS.map((config, index) => {
+    const person = createPerson(config);
+
+    // Two staggered rows of five.
+    const column = index % 5;
+    const row = Math.floor(index / 5);
+    const x = (column - 2) * 1.35 + (row === 1 ? 0.28 : -0.14);
+    const z = row === 0 ? 0.95 : -0.95;
+
+    person.group.position.set(x, 0, z);
+    lineup.add(person.group);
+
+    mesh(
+      lineup,
+      new THREE.CylinderGeometry(0.57, 0.61, 0.14, 48),
+      clay("#ded4c5"),
+      [x, -0.07, z],
+      "plinth",
+    );
+
+    // Keep helpers outside the lineup bounds used by the camera.
+    const helper = new THREE.SkeletonHelper(person.group);
+    helper.visible = false;
+    helper.material.depthTest = false;
+    helper.material.transparent = true;
+    helper.material.opacity = 0.9;
+    helper.renderOrder = 100;
+    scene.add(helper);
+
+    person.helper = helper;
+    return person;
+  });
+
+  // =====================================================================
+  // CAMERA AND UI
+  // =====================================================================
+
+  document.querySelector("header p").textContent =
+    "5 girls · 5 boys · Shared proportions · Toggle 骨架 to inspect joints.";
+
+  const panel = document.querySelector("#panel");
+  panel.replaceChildren();
+
+  let selected = -1;
+  let showSkeleton = false;
+  const selectionButtons = [];
+
+  function frameObject(object) {
+    object.updateWorldMatrix(true, true);
+
+    const bounds = new THREE.Box3().setFromObject(object);
+    const sphere = bounds.getBoundingSphere(new THREE.Sphere());
+
+    const verticalHalfFov = THREE.MathUtils.degToRad(camera.fov / 2);
+    const horizontalHalfFov = Math.atan(
+      Math.tan(verticalHalfFov) * camera.aspect,
+    );
+    const limitingHalfFov = Math.min(
+      verticalHalfFov,
+      horizontalHalfFov,
+    );
+
+    // Bounding-sphere framing leaves space around the characters.
+    const distance =
+      sphere.radius / Math.sin(limitingHalfFov) * 1.22;
+
+    const direction = new THREE.Vector3(0, 0.27, 1).normalize();
+
+    // Clear residual orbit damping before moving to a new subject.
+    const damping = controls.enableDamping;
+    controls.enableDamping = false;
+    controls.update();
+
+    controls.target.copy(sphere.center);
+    camera.position.copy(sphere.center)
+      .addScaledVector(direction, distance);
+
+    camera.updateProjectionMatrix();
+    controls.update();
+    controls.enableDamping = damping;
+  }
+
+  function focusPerson(index) {
+    selected = index;
+
+    // Individual view isolates the selected character.
+    // All restores the complete lineup.
+    people.forEach((person, i) => {
+      person.group.visible = index === -1 || index === i;
+      person.helper.visible =
+        showSkeleton && person.group.visible;
+    });
+
+    frameObject(index === -1 ? lineup : people[index].group);
+
+    selectionButtons.forEach(({ button, index: buttonIndex }) => {
+      button.setAttribute(
+        "aria-pressed",
+        String(buttonIndex === selected),
+      );
+    });
+  }
+
+  function makeButton(label, handler) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip";
+    button.textContent = label;
+    button.style.flexShrink = "0";
+    button.addEventListener("click", handler);
+    panel.appendChild(button);
+    return button;
+  }
+
+  const allButton = makeButton("All · 10", () => focusPerson(-1));
+  selectionButtons.push({ button: allButton, index: -1 });
+
+  people.forEach((person, index) => {
+    const button = makeButton(
+      `${person.config.name} · ${person.config.gender === "girl" ? "Girl" : "Boy"
+      }`,
+      () => focusPerson(index),
+    );
+
+    button.style.borderBottom =
+      `3px solid ${person.config.colors.hoodie}`;
+
+    selectionButtons.push({ button, index });
+  });
+
+  const skeletonButton = makeButton("骨架 · Off", () => {
+    showSkeleton = !showSkeleton;
+    skeletonButton.textContent = showSkeleton
+      ? "骨架 · On"
+      : "骨架 · Off";
+    skeletonButton.setAttribute("aria-pressed", String(showSkeleton));
+
+    people.forEach((person) => {
+      person.helper.visible =
+        showSkeleton && person.group.visible;
+    });
+  });
+  skeletonButton.setAttribute("aria-pressed", "false");
+
+  const spinButton = makeButton("Auto spin ↻", () => {
+    controls.autoRotate = !controls.autoRotate;
+    spinButton.textContent = controls.autoRotate
+      ? "Stop spin ⏸"
+      : "Auto spin ↻";
+    spinButton.setAttribute(
+      "aria-pressed",
+      String(controls.autoRotate),
+    );
+  });
+  spinButton.setAttribute("aria-pressed", "false");
+
+  function resize() {
+    camera.aspect = innerWidth / innerHeight;
+    camera.fov = camera.aspect < 0.75 ? 46 : 36;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+
+    frameObject(selected === -1 ? lineup : people[selected].group);
+  }
+
+  addEventListener("resize", resize);
+
+  focusPerson(-1);
+  resize();
+
+  // =====================================================================
+  // GENTLE BONE ANIMATION — feet remain planted
+  // =====================================================================
+
+  const motionPreference = matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  );
+  const start = performance.now();
+
+  renderer.setAnimationLoop((now) => {
+    const t = (now - start) / 1000;
+    const animate = !motionPreference.matches;
+
+    people.forEach((person, index) => {
+      person.head.rotation.z = animate
+        ? Math.sin(t * 1.15 + index * 0.7) * 0.025
+        : 0;
+
+      person.head.rotation.y = animate
+        ? Math.sin(t * 0.65 + index) * 0.045
+        : 0;
+
+      person.arms.forEach(({ shoulder, elbow, side }) => {
+        shoulder.rotation.z = side * (
+          0.10 +
+          (animate ? Math.sin(t * 1.5 + index) * 0.018 : 0)
+        );
+
+        shoulder.rotation.x = animate
+          ? Math.sin(t * 1.2 + index + side) * 0.025
+          : 0;
+
+        elbow.rotation.x = animate
+          ? Math.sin(t * 1.2 + index + side) * 0.018
+          : 0;
+      });
+    });
+
+    controls.update();
+    renderer.render(scene, camera);
+  });
+</script>
+</body>
+</html>

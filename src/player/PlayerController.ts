@@ -727,7 +727,7 @@ export class PlayerController {
     this.rig.body.position.x = THREE.MathUtils.lerp(this.rig.body.position.x, 0, blend);
     this.rig.pelvis.position.y = THREE.MathUtils.lerp(
       this.rig.pelvis.position.y,
-      0.64,
+      this.rig.pelvisRestY,
       blend,
     );
     this.rig.pelvis.rotation.x = THREE.MathUtils.lerp(this.rig.pelvis.rotation.x, 0, blend);

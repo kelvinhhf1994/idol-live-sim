@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import { TwoBoneIKSolver, type TwoBoneIKChain } from "../animation/twoBoneIK";
-import { createLowPolyPerson, type PersonRig } from "../scene/createCharacter";
+import type { PersonRig } from "../scene/createCharacter";
+import { createWeekendHero } from "../scene/createWeekendHero";
 
-const liftHeight = 1.15;
-const supporterOffset = 0.38;
+const liftHeight = 0.95;
+const supporterOffset = 0.28;
 /** Exponential approach rate while rising into lift height. */
 const raiseRate = 6;
 /** Faster descent so cancel lands in ~0.2s instead of ~1s. */
@@ -38,13 +39,27 @@ export class LiftController {
     private readonly groundY: number,
     private readonly playerRig: PersonRig,
   ) {
-    const left = createLowPolyPerson({
-      hairStyle: "short",
-      palette: { hair: 0x18151a, top: 0x17263b, bottom: 0x10151f, accent: 0x5b7592 },
+    const left = createWeekendHero({
+      scale: this.playerRig.group.scale.x,
+      hairstyle: "crop",
+      colors: {
+        hoodie: "#17263b",
+        ribbing: "#10151f",
+        pants: "#10151f",
+        hair: "#18151a",
+        hairLight: "#2a2428",
+      },
     });
-    const right = createLowPolyPerson({
-      hairStyle: "short",
-      palette: { hair: 0x2a1b17, top: 0x302039, bottom: 0x17121c, accent: 0x765380 },
+    const right = createWeekendHero({
+      scale: this.playerRig.group.scale.x,
+      hairstyle: "side-part",
+      colors: {
+        hoodie: "#302039",
+        ribbing: "#17121c",
+        pants: "#17121c",
+        hair: "#2a1b17",
+        hairLight: "#3d2a22",
+      },
     });
     left.group.position.set(-supporterOffset, 0, 0.08);
     right.group.position.set(supporterOffset, 0, 0.08);
@@ -147,7 +162,7 @@ export class LiftController {
     this.playerRig.body.position.y = 0;
     this.playerRig.body.rotation.x = 0;
     this.playerRig.body.rotation.z = 0;
-    this.playerRig.pelvis.position.y = 0.64;
+    this.playerRig.pelvis.position.y = this.playerRig.pelvisRestY;
     this.playerRig.chest.rotation.set(0, 0, 0);
     this.playerRig.leftLeg.rotation.set(softHip, 0, 0);
     this.playerRig.rightLeg.rotation.set(softHip, 0, 0);
@@ -228,11 +243,15 @@ export class LiftController {
 }
 
 function createArmChain(rig: PersonRig, side: "left" | "right"): TwoBoneIKChain {
+  const root = side === "left" ? rig.leftShoulder : rig.rightShoulder;
+  const mid = side === "left" ? rig.leftElbow : rig.rightElbow;
+  const end = side === "left" ? rig.leftHand : rig.rightHand;
+  const scale = rig.group.scale.x;
   return {
-    root: side === "left" ? rig.leftShoulder : rig.rightShoulder,
-    mid: side === "left" ? rig.leftElbow : rig.rightElbow,
-    end: side === "left" ? rig.leftHand : rig.rightHand,
-    upperLength: 0.29,
-    lowerLength: 0.3,
+    root,
+    mid,
+    end,
+    upperLength: mid.position.length() * scale,
+    lowerLength: end.position.length() * scale,
   };
 }

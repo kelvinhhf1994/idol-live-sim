@@ -5,12 +5,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "npm run typecheck && vite build",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.e2e.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "video-to-dance": "scripts/video-to-dance/.venv/bin/python scripts/video-to-dance/orchestrator.py"
   },
   "dependencies": {
     "three": "^0.185.1"

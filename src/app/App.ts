@@ -24,9 +24,11 @@ import {
 } from "../player/penlight";
 import { PlayerController } from "../player/PlayerController";
 import type { TwoStepPose } from "../player/TwoStepAction";
-import { createLowPolyPerson, DENIM_JEANS } from "../scene/createCharacter";
+import { createWeekendHero } from "../scene/createWeekendHero";
 import { createVenue, type VenueBuild } from "../scene/createVenue";
 import { MAX_IDOL_COUNT } from "../show/idolMembers";
+import { SONG_CATALOG, getSongById, type SongDefinition } from "../show/songCatalog";
+import { SongPlayer } from "../show/SongPlayer";
 import { ShowController } from "../show/ShowController";
 import { getFullscreenPresentation } from "../ui/fullscreenMode";
 import { StationSelector, type Station } from "../ui/StationSelector";
@@ -83,6 +85,9 @@ export interface AppSnapshot {
     z: number;
     phase: "home" | "airborne" | "down" | "getting-up" | "returning";
   } | null;
+  songId: string | null;
+  songPlaying: boolean;
+  songHasClip: boolean;
 }
 
 export class App {
@@ -102,6 +107,7 @@ export class App {
   private cameraController: CameraController;
   private showController: ShowController;
   private youtubePlayer: YouTubePlayer | null = null;
+  private readonly songPlayer = new SongPlayer();
   private readonly entryScreen = requireElement<HTMLElement>("entry");
   private readonly hud = requireElement<HTMLElement>("hud");
   private readonly enterButton = requireElement<HTMLButtonElement>("enter-button");
@@ -117,6 +123,9 @@ export class App {
   private readonly idolCountButton = requireElement<HTMLButtonElement>("idol-count-button");
   private readonly idolCountLabel = requireElement<HTMLElement>("idol-count-label");
   private readonly idolCountPanel = requireElement<HTMLElement>("idol-count-panel");
+  private readonly songSelectButton = requireElement<HTMLButtonElement>("song-select-button");
+  private readonly songSelectLabel = requireElement<HTMLElement>("song-select-label");
+  private readonly songSelectPanel = requireElement<HTMLElement>("song-select-panel");
   private readonly videoButton = requireElement<HTMLButtonElement>("video-button");
   private readonly videoCloseButton = requireElement<HTMLButtonElement>("video-close");
   private readonly videoSeekBackward = requireElement<HTMLButtonElement>("video-seek-backward");
@@ -175,12 +184,7 @@ export class App {
     this.venue = createVenue(GENERIC_VENUE);
     this.scene.add(this.venue.group);
 
-    const playerRig = createLowPolyPerson({
-      style: "anime",
-      hairStyle: "short",
-      glowStick: true,
-      palette: { top: 0xd6ff3f, bottom: DENIM_JEANS, accent: 0xff2f7d, eye: 0x2f7fd9 },
-    });
+    const playerRig = createWeekendHero({ glowStick: true });
     this.playerOutlines = playerRig.outlines;
     this.player = new PlayerController(playerRig, GENERIC_VENUE, this.venue.colliders);
     this.player.setPenlightState(loadPenlightState(window.localStorage));
@@ -293,8 +297,10 @@ export class App {
 
     this.buildPenlightColorGrid();
     this.buildIdolCountChips();
+    this.buildSongSelectPanel();
     this.syncSettingsControls(this.player.gameSettings);
     this.syncPenlightChrome();
+    this.syncSongSelectChrome();
 
     this.venueBadgeText = document.querySelector<HTMLElement>("#venue-badge-text");
     this.stationSelector = new StationSelector(
@@ -327,6 +333,7 @@ export class App {
     this.cameraButton.addEventListener("click", this.handleCameraToggle);
     this.houseLightsButton.addEventListener("click", this.handleHouseLightsToggle);
     this.idolCountButton.addEventListener("click", this.handleIdolCountToggle);
+    this.songSelectButton.addEventListener("click", this.handleSongSelectToggle);
     this.syncHouseLightsChrome();
     this.fullscreenButton.addEventListener("click", this.handleFullscreen);
     this.fullscreenGuideClose.addEventListener("click", this.handleFullscreenGuideClose);
@@ -367,6 +374,7 @@ export class App {
     const audienceStatus = this.showController.getAudienceStatus();
     const performerStatus = this.showController.getPerformerStatus();
     const propStatus = this.showController.getPropStatus();
+    const songState = this.songPlayer.getState();
     return {
       player: {
         x: this.player.position.x,
@@ -407,6 +415,9 @@ export class App {
       ...audienceStatus,
       ...performerStatus,
       ...propStatus,
+      songId: songState.songId,
+      songPlaying: songState.playing,
+      songHasClip: songState.clip !== null,
     };
   }
 
@@ -447,6 +458,7 @@ export class App {
     this.cameraButton.removeEventListener("click", this.handleCameraToggle);
     this.houseLightsButton.removeEventListener("click", this.handleHouseLightsToggle);
     this.idolCountButton.removeEventListener("click", this.handleIdolCountToggle);
+    this.songSelectButton.removeEventListener("click", this.handleSongSelectToggle);
     if (ENABLE_YOUTUBE) {
       this.videoButton.removeEventListener("click", this.handleVideoOpen);
       this.videoUrlForm.removeEventListener("submit", this.handleVideoLoad);
@@ -463,6 +475,7 @@ export class App {
     this.beatButton.dispose();
     this.cameraController.dispose();
     this.stationSelector.dispose();
+    this.songPlayer.dispose();
     this.youtubePlayer?.dispose();
     this.timer.dispose();
     disposeScene(this.scene);
@@ -481,6 +494,7 @@ export class App {
     const movement = combineMovementInputs(this.joystick.value, this.keyboard.value);
     this.player.update(dt, movement, this.cameraController.yaw, this.entered);
     this.cameraController.update(dt, this.player.position);
+    this.syncShowPerformance();
     this.showController.update(this.timer.getElapsed(), dt, this.player.audienceImpact);
     this.renderer.render(this.scene, this.camera);
     this.updateQuality(rawDt);
@@ -518,6 +532,7 @@ export class App {
       this.idolCount,
     );
     this.scene.add(this.showController.group);
+    this.syncShowPerformance();
 
     // Update camera controller with new venue bounds
     this.cameraController.setVenue(venueDef, this.venue.colliders);
@@ -589,10 +604,22 @@ export class App {
     this.setIdolCountPanelOpen(this.idolCountPanel.hasAttribute("hidden"));
   };
 
+  private readonly handleSongSelectToggle = (): void => {
+    this.setSongSelectPanelOpen(this.songSelectPanel.hasAttribute("hidden"));
+  };
+
   private setIdolCountPanelOpen(open: boolean): void {
     this.idolCountPanel.hidden = !open;
     this.idolCountButton.setAttribute("aria-expanded", String(open));
     this.idolCountButton.classList.toggle("is-active", open);
+    if (open) this.setSongSelectPanelOpen(false);
+  }
+
+  private setSongSelectPanelOpen(open: boolean): void {
+    this.songSelectPanel.hidden = !open;
+    this.songSelectButton.setAttribute("aria-expanded", String(open));
+    this.songSelectButton.classList.toggle("is-active", open);
+    if (open) this.setIdolCountPanelOpen(false);
   }
 
   private buildIdolCountChips(): void {
@@ -612,6 +639,92 @@ export class App {
       this.idolCountPanel.append(chip);
     }
     this.syncIdolCountChrome();
+  }
+
+  private buildSongSelectPanel(): void {
+    this.songSelectPanel.replaceChildren();
+    if (SONG_CATALOG.length === 0) {
+      this.songSelectButton.disabled = true;
+      this.songSelectLabel.textContent = "未有曲目";
+      return;
+    }
+
+    this.songSelectButton.disabled = false;
+    for (const song of SONG_CATALOG) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "song-select-chip";
+      chip.textContent = song.title;
+      chip.setAttribute("role", "option");
+      chip.setAttribute("aria-label", song.title);
+      chip.dataset.songId = song.id;
+      chip.addEventListener("click", () => {
+        void this.handleSongChipClick(song);
+      });
+      this.songSelectPanel.append(chip);
+    }
+
+    const stop = document.createElement("button");
+    stop.type = "button";
+    stop.className = "song-select-chip song-select-chip--stop";
+    stop.textContent = "停止";
+    stop.setAttribute("role", "option");
+    stop.setAttribute("aria-label", "停止歌曲");
+    stop.addEventListener("click", () => {
+      this.songPlayer.stop();
+      this.syncShowPerformance();
+      this.syncSongSelectChrome();
+      this.setSongSelectPanelOpen(false);
+    });
+    this.songSelectPanel.append(stop);
+    this.syncSongSelectChrome();
+  }
+
+  private async handleSongChipClick(song: SongDefinition): Promise<void> {
+    const state = this.songPlayer.getState();
+    if (state.songId === song.id) {
+      await this.songPlayer.togglePlayback();
+    } else {
+      await this.songPlayer.select(song);
+    }
+    this.syncShowPerformance();
+    this.syncSongSelectChrome();
+    this.setSongSelectPanelOpen(false);
+  }
+
+  /** Drive idols from the song clock when a clip is loaded; otherwise procedural. */
+  private syncShowPerformance(): void {
+    const state = this.songPlayer.getState();
+    if (state.songId && state.clip) {
+      this.showController.setPerformance({
+        clip: state.clip,
+        time: state.currentTime,
+        loop: getSongById(state.songId)?.loop ?? true,
+      });
+      return;
+    }
+    this.showController.setPerformance(null);
+  }
+
+  private syncSongSelectChrome(): void {
+    const state = this.songPlayer.getState();
+    const song = state.songId ? getSongById(state.songId) : undefined;
+    if (!song) {
+      this.songSelectLabel.textContent = SONG_CATALOG.length === 0 ? "未有曲目" : "選歌";
+      this.songSelectButton.setAttribute("aria-label", "選歌");
+    } else {
+      const mark = state.playing ? "▶ " : "❚❚ ";
+      this.songSelectLabel.textContent = `${mark}${song.title}`;
+      this.songSelectButton.setAttribute("aria-label", `選歌：${song.title}`);
+    }
+    this.songSelectPanel.querySelectorAll<HTMLButtonElement>(".song-select-chip").forEach((chip) => {
+      const id = chip.dataset.songId;
+      if (!id) {
+        chip.setAttribute("aria-selected", "false");
+        return;
+      }
+      chip.setAttribute("aria-selected", String(id === state.songId));
+    });
   }
 
   setIdolCount(count: number): void {

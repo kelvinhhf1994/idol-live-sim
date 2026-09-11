@@ -38,6 +38,10 @@ function memoryStorage(seed: Record<string, string> = {}) {
 }
 
 describe("penlight", () => {
+  it("starts the player cheering with a raised stick", () => {
+    expect(DEFAULT_PENLIGHT_STATE.pose).toBe("raise");
+  });
+
   it("exposes twelve curated idol-live colors", () => {
     expect(PENLIGHT_COLORS).toHaveLength(12);
     expect(new Set(PENLIGHT_COLORS.map((color) => color.id)).size).toBe(12);
@@ -64,11 +68,13 @@ describe("penlight", () => {
     const point = armPoseFor("point");
     expect(raise).not.toBeNull();
     expect(point).not.toBeNull();
-    // Raise: hang (-Y) rotated by π on X → straight world +Y, no leftward lean.
-    expect(raise!.rightShoulderX).toBeCloseTo(Math.PI, 5);
-    expect(raise!.rightShoulderY).toBeCloseTo(0, 5);
-    expect(raise!.rightShoulderZ).toBeCloseTo(0, 5);
-    expect(raise!.rightElbow).toBeCloseTo(0, 5);
+    // Raise stays below vertical (~40° elevation) and only slightly abducted
+    // so the hand sits beside the temple instead of flaring past the chibi skull.
+    expect(raise!.rightShoulderX).toBeCloseTo(Math.PI / 2 + 0.71, 5);
+    expect(raise!.rightShoulderX).toBeLessThan(Math.PI / 2 + Math.PI / 3);
+    expect(raise!.rightShoulderY).toBeCloseTo(0.04, 5);
+    expect(raise!.rightShoulderZ).toBeCloseTo(0.4, 5);
+    expect(raise!.rightElbow).toBeCloseTo(0.24, 5);
     // Point: horizontal forward (π/2) + 45° elevation → 3π/4, no side lean.
     expect(point!.rightShoulderX).toBeCloseTo((Math.PI * 3) / 4, 5);
     expect(point!.rightShoulderY).toBeCloseTo(0, 5);
@@ -81,7 +87,7 @@ describe("penlight", () => {
     const left = getDynamicArmPose("wiper", -Math.PI / 2)!;
     const right = getDynamicArmPose("wiper", Math.PI / 2)!;
     const mid = getDynamicArmPose("wiper", 0)!;
-    expect(mid.rightShoulderX).toBeCloseTo(2.85, 5);
+    expect(mid.rightShoulderX).toBeCloseTo(Math.PI / 2 + 0.71, 5);
     expect(left.rightShoulderZ).toBeLessThan(mid.rightShoulderZ);
     expect(right.rightShoulderZ).toBeGreaterThan(mid.rightShoulderZ);
     expect(armPoseFor("wiper")!.rightShoulderZ).toBeCloseTo(mid.rightShoulderZ, 5);

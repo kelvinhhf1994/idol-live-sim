@@ -25,6 +25,8 @@ export interface CharacterOptions {
 
 export interface PersonRig {
   rigVersion: 2;
+  /** Bind-pose pelvis height. applyPersonPose restores this plus pose.pelvisY. */
+  pelvisRestY: number;
   group: THREE.Group;
   body: THREE.Group;
   pelvis: THREE.Group;
@@ -232,6 +234,7 @@ export function createLowPolyPerson(options: CharacterOptions = {}): PersonRig {
 
   return {
     rigVersion: 2,
+    pelvisRestY: 0.64,
     group,
     body,
     pelvis,

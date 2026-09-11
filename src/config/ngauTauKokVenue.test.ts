@@ -40,10 +40,10 @@ describe("NGAU_TAU_KOK_VENUE configuration", () => {
     expect(NGAU_TAU_KOK_VENUE.colliders).toContain(barrier);
   });
 
-  it("keeps a full seven-idol line safely on the stage platform", () => {
+  it("keeps a full twelve-idol line safely on the stage platform", () => {
     const stage = NGAU_TAU_KOK_VENUE.platforms[0].bounds;
     const performers = formationPoints(NGAU_TAU_KOK_VENUE.show.performerLine, MAX_IDOL_COUNT);
-    expect(performers).toHaveLength(7);
+    expect(performers).toHaveLength(12);
 
     for (const { x, y, z } of performers) {
       expect(x).toBeGreaterThanOrEqual(stage.minX);

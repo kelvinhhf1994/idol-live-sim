@@ -32,7 +32,7 @@ export interface PenlightState {
 
 export const DEFAULT_PENLIGHT_STATE: PenlightState = {
   colorId: "pink",
-  pose: "idle",
+  pose: "raise",
 };
 
 export interface PenlightStorageLike {
@@ -124,12 +124,11 @@ export const PENLIGHT_STICK_IDLE: PenlightStickPose = {
 };
 
 /**
- * Raised cheer: flip the bottom-pivoted shaft so the tip leans slightly upper-left
- * while the arm itself stays straight vertical.
+ * Raised cheer: shaft extends along the raised forearm with a natural upward grip.
  */
 export const PENLIGHT_STICK_RAISE: PenlightStickPose = {
   position: { x: -0.01, y: 0.02, z: 0 },
-  rotation: { x: Math.PI, y: -0.3, z: 0.4 },
+  rotation: { x: Math.PI, y: -0.15, z: 0.2 },
 };
 
 /**
@@ -195,11 +194,12 @@ export interface PenlightArmPose {
 }
 
 export const PENLIGHT_ARM_RAISE: PenlightArmPose = {
-  // Hang (-Y) → rotate X by π → arm points straight world +Y; no Y/Z lean.
-  rightShoulderX: Math.PI,
-  rightShoulderY: 0,
-  rightShoulderZ: 0,
-  rightElbow: 0,
+  // Temple-side cheer: ~41° above horizontal. Going nearer vertical (90° up)
+  // drives the upper arm through the oversized chibi skull.
+  rightShoulderX: Math.PI / 2 + 0.71,
+  rightShoulderY: 0.04,
+  rightShoulderZ: 0.4,
+  rightElbow: 0.24,
 };
 
 /** Hang (-Y) → X=π/2 is horizontal forward (-Z); +π/4 lifts 45° toward stage. */
@@ -302,12 +302,12 @@ export function getDynamicArmPose(pose: PenlightPose, phase: number): PenlightAr
   if (pose === "raise") return PENLIGHT_ARM_RAISE;
   if (pose === "point") return PENLIGHT_ARM_POINT;
   if (pose === "wiper") {
-    // Overhead wiper: nearly upright with a wide Z swing from the shoulder.
+    // Same temple-side height as raise; sweep stays close to the skull.
     return {
-      rightShoulderX: 2.85 + Math.sin(2 * phase) * 0.06,
-      rightShoulderY: Math.sin(phase) * 0.05,
-      rightShoulderZ: -0.12 + Math.sin(phase) * 0.45,
-      rightElbow: 0.12 + Math.abs(Math.sin(phase)) * 0.08,
+      rightShoulderX: PENLIGHT_ARM_RAISE.rightShoulderX + Math.sin(2 * phase) * 0.05,
+      rightShoulderY: PENLIGHT_ARM_RAISE.rightShoulderY + Math.sin(phase) * 0.04,
+      rightShoulderZ: PENLIGHT_ARM_RAISE.rightShoulderZ + 0.08 + Math.sin(phase) * 0.16,
+      rightElbow: PENLIGHT_ARM_RAISE.rightElbow + Math.sin(phase) * 0.06,
     };
   }
   if (pose === "beat") {

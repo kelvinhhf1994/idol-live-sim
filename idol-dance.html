@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Idol dance</title>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}</script>
+<style>body{margin:0}canvas{display:block;width:100%;height:100vh}</style>
+</head>
+<body>
+<script type="module">
+import * as THREE from "three";
+
+const DANCE = (() => {
+  const BPM = 120;
+
+  // Positive shoulderX raises the arm forward.
+  // Negative leftShoulderZ / positive rightShoulderZ open outward.
+  function arms(lx, lz, le, rx, rz, re) {
+    return {
+      leftShoulderX: lx,
+      leftShoulderZ: lz,
+      leftElbow: le,
+      rightShoulderX: rx,
+      rightShoulderZ: rz,
+      rightElbow: re,
+    };
+  }
+
+  const A = {
+    ready: arms(.18, -.16, .40, .18, .16, .40),
+    stepR: arms(1.05, -.25, 1.25, .30, .90, .35),
+    stepL: arms(.30, -.90, .35, 1.05, .25, 1.25),
+    chest: arms(1.25, -.18, 1.30, 1.25, .18, 1.30),
+    frame: arms(1.80, -.24, 1.05, 1.80, .24, 1.05),
+    open:  arms(0, -1.45, .20, 0, 1.45, .20),
+    v:     arms(0, -2.42, .16, 0, 2.42, .16),
+    diagL: arms(0, -2.32, .16, 1.25, .28, 1.30),
+    diagR: arms(1.25, -.28, 1.30, 0, 2.32, .16),
+    point: arms(1.50, -.08, .12, 1.15, .35, 1.35),
+  };
+
+  const BASE = {
+    ...A.ready,
+    bodyY: 0,
+    bodyPositionX: 0,
+    bodyYaw: 0,
+    pelvisTwist: 0,
+    chestX: .025,
+    chestY: 0,
+    chestZ: 0,
+    neckX: -.02,
+    leftFootX: -.14,
+    leftFootY: 0,
+    leftFootZ: 0,
+    rightFootX: .14,
+    rightFootY: 0,
+    rightFootZ: 0,
+  };
+
+  const P = (armPose, extra = {}) => ({
+    ...BASE,
+    ...armPose,
+    ...extra,
+  });
+
+  const hook = [
+    P(A.stepR, {
+      bodyPositionX: .09,
+      leftFootX: -.14,
+      rightFootX: .29,
+      chestZ: -.045,
+      pelvisTwist: -.06,
+    }),
+    P(A.frame, {
+      bodyPositionX: .13,
+      leftFootX: 0,
+      rightFootX: .29,
+      chestZ: -.025,
+    }),
+    P(A.stepL, {
+      bodyPositionX: -.02,
+      bodyY: -.025,
+      leftFootX: -.29,
+      rightFootX: .29,
+      chestZ: .045,
+      pelvisTwist: .06,
+    }),
+    P(A.frame, {
+      bodyPositionX: -.13,
+      leftFootX: -.29,
+      rightFootX: 0,
+      chestZ: .025,
+    }),
+    P(A.diagR, {
+      bodyPositionX: -.06,
+      bodyY: -.02,
+      leftFootX: -.24,
+      rightFootX: .24,
+      chestY: -.10,
+    }),
+    P(A.chest, {
+      bodyY: -.018,
+      leftFootX: -.16,
+      rightFootX: .16,
+      chestX: .055,
+    }),
+    P(A.v, {
+      leftFootX: -.22,
+      rightFootX: .22,
+      chestX: -.025,
+    }),
+    P(A.frame),
+  ];
+
+  const feature = [
+    P(A.diagL, {
+      bodyPositionX: -.07,
+      bodyY: -.02,
+      leftFootX: -.22,
+      rightFootX: .22,
+      chestY: .12,
+    }),
+    P(A.diagR, {
+      bodyPositionX: .07,
+      bodyY: -.02,
+      leftFootX: -.22,
+      rightFootX: .22,
+      chestY: -.12,
+    }),
+    P(A.point, {
+      bodyPositionX: .06,
+      leftFootX: -.12,
+      leftFootZ: .11,
+      rightFootX: .22,
+    }),
+    P(A.chest, {
+      bodyY: -.02,
+      leftFootX: -.18,
+      rightFootX: .18,
+    }),
+    P(A.open, {
+      leftFootX: -.18,
+      rightFootX: .18,
+      pelvisTwist: -.10,
+      chestY: -.12,
+      chestZ: -.035,
+    }),
+    P(A.open, {
+      leftFootX: -.18,
+      rightFootX: .18,
+      pelvisTwist: .10,
+      chestY: .12,
+      chestZ: .035,
+    }),
+    P(A.frame, {
+      bodyPositionX: -.06,
+      bodyY: -.01,
+      leftFootX: -.17,
+      rightFootX: .11,
+      rightFootY: .12,
+      rightFootZ: .09,
+      chestZ: .035,
+    }),
+    P(A.frame),
+  ];
+
+  const finish = [
+    P(A.diagR, {
+      bodyY: -.02,
+      leftFootX: -.23,
+      rightFootX: .23,
+      chestY: -.10,
+    }),
+    P(A.diagL, {
+      bodyY: -.02,
+      leftFootX: -.23,
+      rightFootX: .23,
+      chestY: .10,
+    }),
+    P(A.chest, { bodyY: -.025 }),
+    P(A.open),
+    P(A.v, { leftFootX: -.20, rightFootX: .20 }),
+    P(A.frame),
+    P(A.diagR, {
+      bodyPositionX: -.04,
+      leftFootX: -.20,
+      rightFootX: .20,
+      chestY: -.10,
+    }),
+    P(A.diagR, {
+      bodyPositionX: -.04,
+      leftFootX: -.20,
+      rightFootX: .20,
+      chestY: -.10,
+    }),
+  ];
+
+  const frames = [...hook, ...feature, ...hook, ...finish];
+  const keys = Object.keys(BASE);
+  const clamp01 = x => Math.max(0, Math.min(1, x));
+  const ease = x => x * x * x * (x * (x * 6 - 15) + 10);
+
+  return {
+    stagger: 0,
+    sections: [{
+      id: "idol-32-count",
+      seconds: frames.length * 60 / BPM,
+      pose(t) {
+        const count = t * frames.length;
+        const index = Math.floor(count) % frames.length;
+        const fraction = count - Math.floor(count);
+        const a = frames[index];
+        const b = frames[(index + 1) % frames.length];
+        const u = ease(clamp01((fraction - .22) / .78));
+        const p = {};
+        for (const key of keys) {
+          p[key] = a[key] + (b[key] - a[key]) * u;
+        }
+        for (const side of ["left", "right"]) {
+          const x = `${side}FootX`;
+          const y = `${side}FootY`;
+          const z = `${side}FootZ`;
+          const travel = Math.hypot(b[x] - a[x], b[z] - a[z]);
+          if (travel > .005) {
+            const clearance = Math.min(.055, .025 + travel * .08);
+            p[y] += Math.sin(Math.PI * u) * clearance;
+          }
+        }
+        if (count < 30) {
+          p.bodyY -= .009 * Math.sin(Math.PI * count) ** 2;
+        }
+        p.neckY = -.7 * (p.pelvisTwist + p.chestY);
+        p.neckZ = -.6 * p.chestZ;
+        return p;
+      },
+    }],
+  };
+})();
+
+const REST={
+  bodyY:0,bodyPositionX:0,bodyX:0,bodyYaw:0,bodyZ:0,pelvisY:0,pelvisX:0,pelvisTwist:0,pelvisZ:0,
+  chestX:0,chestY:0,chestZ:0,neckX:0,neckY:0,neckZ:0,
+  leftShoulderX:0,leftShoulderY:0,leftShoulderZ:0.12,rightShoulderX:0,rightShoulderY:0,rightShoulderZ:-0.12,
+  leftElbow:0,rightElbow:0,leftHipX:0,leftHipY:0,leftHipZ:0,rightHipX:0,rightHipY:0,rightHipZ:0,
+  leftKnee:0,rightKnee:0,leftAnkleX:0,leftAnkleZ:0,rightAnkleX:0,rightAnkleZ:0,
+};
+
+function mat(c){return new THREE.MeshBasicMaterial({color:c})}
+function ball(parent,m,x,y,z,sx,sy,sz){
+  const o=new THREE.Mesh(new THREE.SphereGeometry(1,10,8),m);
+  o.position.set(x,y,z);o.scale.set(sx,sy,sz);parent.add(o);return o;
+}
+function j(parent,x,y,z){const g=new THREE.Group();g.position.set(x,y,z);parent.add(g);return g}
+function limb(root,x,uy,u,f,m){
+  const sh=j(root,x,uy,0);ball(sh,m,0,-u/2,0,0.045,u/2,0.045);
+  const el=j(sh,0,-u,0);ball(el,m,0,-f/2,0,0.038,f/2,0.038);
+  return [sh,el];
+}
+function makeIdol(){
+  const g=new THREE.Group();g.scale.set(0.86,0.7,0.86);
+  const body=j(g,0,0,0),pelvis=j(body,0,0.51,0),chest=j(pelvis,0,0.27,0),neck=j(chest,0,0.26,0);
+  ball(chest,mat(0xdc7895),0,0.02,0,0.16,0.2,0.12);
+  ball(pelvis,mat(0xdc7895),0,-0.08,0,0.2,0.14,0.14);
+  const head=ball(neck,mat(0xefbc9b),0,0.28,0,0.22,0.28,0.2);
+  ball(head,mat(0x754633),0,0.4,-0.05,1.05,0.65,1);
+  const [ls,le]=limb(chest,-0.19,0.16,0.265,0.235,mat(0xefbc9b));
+  const [rs,re]=limb(chest,0.19,0.16,0.265,0.235,mat(0xefbc9b));
+  function leg(sx){
+    const hip=j(pelvis,sx,0,0);ball(hip,mat(0xefbc9b),0,-0.215,0,0.055,0.215,0.055);
+    const kn=j(hip,0,-0.43,0);ball(kn,mat(0xefbc9b),0,-0.2,0,0.045,0.2,0.045);
+    const an=j(kn,0,-0.4,0),fp=j(an,0,0,0);ball(fp,mat(0x5a3a3a),0,-0.05,0.05,0.07,0.04,0.12);
+    return [hip,kn,fp];
+  }
+  const [lh,lk,lf]=leg(-0.11),[rh,rk,rf]=leg(0.11);
+  return {group:g,body,pelvis,chest,neck,leftShoulder:ls,rightShoulder:rs,leftElbow:le,rightElbow:re,leftHip:lh,rightHip:rh,leftKnee:lk,rightKnee:rk,leftFootPivot:lf,rightFootPivot:rf};
+}
+
+function apply(rig, src) {
+  const p = { ...REST, ...src };
+
+  rig.body.position.set(
+    p.bodyPositionX,
+    .385 + p.bodyY,
+    0
+  );
+  rig.body.rotation.set(p.bodyX, p.bodyYaw, p.bodyZ);
+  rig.pelvis.position.y = .51 + p.pelvisY;
+  rig.pelvis.rotation.set(p.pelvisX, p.pelvisTwist, p.pelvisZ);
+  rig.chest.rotation.set(p.chestX, p.chestY, p.chestZ);
+  rig.neck.rotation.set(p.neckX, p.neckY, p.neckZ);
+
+  rig.leftShoulder.rotation.set(-p.leftShoulderX, p.leftShoulderY, p.leftShoulderZ);
+  rig.rightShoulder.rotation.set(-p.rightShoulderX, p.rightShoulderY, p.rightShoulderZ);
+  rig.leftElbow.rotation.set(-p.leftElbow, 0, 0);
+  rig.rightElbow.rotation.set(-p.rightElbow, 0, 0);
+
+  const DOWN = new THREE.Vector3(0, -1, 0);
+  const X_AXIS = new THREE.Vector3(1, 0, 0);
+
+  function plantFoot(hip, knee, foot, x, lift, z) {
+    const upper = .43;
+    const lower = .40;
+    const target = new THREE.Vector3(x, .09 + lift, z);
+    rig.group.localToWorld(target);
+    rig.pelvis.worldToLocal(target);
+    target.sub(hip.position);
+
+    const distance = THREE.MathUtils.clamp(
+      target.length(),
+      Math.abs(upper - lower) + .0001,
+      upper + lower - .0001
+    );
+    const kneeAngle = Math.acos(THREE.MathUtils.clamp(
+      (distance * distance - upper * upper - lower * lower) / (2 * upper * lower),
+      -1,
+      1
+    ));
+    const hipOffset = Math.atan2(
+      lower * Math.sin(kneeAngle),
+      upper + lower * Math.cos(kneeAngle)
+    );
+
+    hip.quaternion.setFromUnitVectors(DOWN, target.normalize());
+    hip.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(X_AXIS, -hipOffset));
+    knee.rotation.set(kneeAngle, 0, 0);
+
+    const parentRotation = rig.body.quaternion.clone()
+      .multiply(rig.pelvis.quaternion)
+      .multiply(hip.quaternion)
+      .multiply(knee.quaternion);
+    foot.quaternion.copy(parentRotation.invert());
+  }
+
+  rig.group.updateMatrixWorld(true);
+  plantFoot(rig.leftHip, rig.leftKnee, rig.leftFootPivot, p.leftFootX ?? -.14, p.leftFootY ?? 0, p.leftFootZ ?? 0);
+  plantFoot(rig.rightHip, rig.rightKnee, rig.rightFootPivot, p.rightFootX ?? .14, p.rightFootY ?? 0, p.rightFootZ ?? 0);
+}
+
+function sample(time,i=0){
+  const total=DANCE.sections.reduce((s,x)=>s+x.seconds,0);
+  let w=((time%total)+total)%total,c=0;
+  for(const s of DANCE.sections){
+    if(w<c+s.seconds){
+      const local=w-c+i*DANCE.stagger;
+      const t=(((local%s.seconds)+s.seconds)%s.seconds)/s.seconds;
+      return s.pose(t,Math.sin(local*Math.PI*4),Math.sin(local*Math.PI*2));
+    }
+    c+=s.seconds;
+  }
+  return {};
+}
+
+const renderer=new THREE.WebGLRenderer();
+renderer.setSize(innerWidth,innerHeight);
+document.body.append(renderer.domElement);
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x222);
+const camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,0.1,20);
+camera.position.set(0,1.2,3.2);camera.lookAt(0,0.8,0);
+const idol=makeIdol();scene.add(idol.group);
+let t0=0,last=performance.now();
+function tick(now){
+  t0+=Math.min((now-last)/1000,0.05);last=now;
+  apply(idol,sample(t0));
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+window.IDOL_DANCE={DANCE,REST,sample,apply};
+</script>
+</body>
+</html>

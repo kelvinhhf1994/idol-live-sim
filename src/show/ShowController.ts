@@ -7,8 +7,9 @@ import {
 } from "../animation/personPose";
 import type { VenueDefinition } from "../config/venue";
 import type { AudienceImpactSource } from "../player/PlayerController";
-import { createLowPolyPerson, type PersonRig } from "../scene/createCharacter";
+import type { PersonRig } from "../scene/createCharacter";
 import { createChibiIdol } from "../scene/createChibiIdol";
+import { createWeekendHero, mixWeekendAudienceLook } from "../scene/createWeekendHero";
 import { groundHeightAt } from "../core/venueGround";
 import {
   createAudienceKnockbackState,
@@ -17,21 +18,18 @@ import {
   type AudienceKnockbackState,
 } from "./audienceKnockback";
 import { formationPoints, type PerformerLine } from "./formation";
+import { applyAudiencePenlight, writeAudienceCheerPose } from "./audienceCheer";
+import { applyIdolDancePose, writeIdolDancePose } from "./idolDance";
+import { sampleCapturedDance, type DanceClip } from "../animation/capturedDance";
 import { IDOL_MEMBERS, MAX_IDOL_COUNT } from "./idolMembers";
 
-export interface DancePose {
-  armSwing: number;
-  oppositeArm: number;
-  legSwing: number;
-  bodyBounce: number;
-  bodyTwist: number;
-  headTurn: number;
-  leftElbow: number;
-  rightElbow: number;
-  leftKnee: number;
-  rightKnee: number;
-  leftAnkle: number;
-  rightAnkle: number;
+/** Atlas idols already face +Z, the audience side of every current stage. */
+const PERFORMER_HOME_YAW = 0;
+
+export interface ShowPerformance {
+  clip: DanceClip;
+  time: number;
+  loop?: boolean;
 }
 
 interface Performer {
@@ -41,7 +39,6 @@ interface Performer {
   homeZ: number;
   index: number;
   knockback: AudienceKnockbackState;
-  dancePose: DancePose;
   poseTarget: PersonPose;
 }
 
@@ -93,6 +90,7 @@ export class ShowController {
   private readonly audience: AudienceMember[] = [];
   private readonly props: KnockableProp[] = [];
   private performerCount = 0;
+  private performance: ShowPerformance | null = null;
   private readonly resolveGroundHeight = (x: number, z: number): number =>
     groundHeightAt(this.venue, x, z);
 
@@ -109,7 +107,6 @@ export class ShowController {
   ) {
     IDOL_MEMBERS.forEach((member, index) => {
       const rig = createChibiIdol(member);
-      rig.group.rotation.y = Math.PI;
       this.group.add(rig.group);
       this.performers.push({
         rig,
@@ -118,24 +115,13 @@ export class ShowController {
         homeZ: performerLine.z,
         index,
         knockback: createAudienceKnockbackState(index + 100, 0, performerLine.z, performerLine.y),
-        dancePose: createDancePose(),
         poseTarget: createPersonPose(),
       });
     });
     this.setPerformerCount(initialPerformerCount);
 
-    const audiencePalettes = [
-      { top: 0x35303f, bottom: 0x17141d, accent: 0xd6ff3f },
-      { top: 0x6b3651, bottom: 0x19151e, accent: 0xff397d },
-      { top: 0x234652, bottom: 0x17141d, accent: 0x3f8cff },
-    ];
     audiencePoints.slice(0, 12).forEach((point, index) => {
-      const rig = createLowPolyPerson({
-        scale: 0.9 + (index % 3) * 0.035,
-        hairStyle: index % 2 === 0 ? "short" : "bob",
-        glowStick: index % 3 !== 0,
-        palette: audiencePalettes[index % audiencePalettes.length],
-      });
+      const rig = createWeekendHero(mixWeekendAudienceLook(index));
       rig.group.position.copy(point);
       this.group.add(rig.group);
       this.audience.push({
@@ -183,15 +169,29 @@ export class ShowController {
       performer.homeZ = point.z;
       performer.knockback = createAudienceKnockbackState(index + 100, point.x, point.z, point.y);
       performer.rig.group.position.copy(point);
-      performer.rig.group.rotation.y = Math.PI;
+      performer.rig.group.rotation.y = PERFORMER_HOME_YAW;
     });
+  }
+
+  /**
+   * When set, on-stage idols sample the captured clip at `time` (no stagger).
+   * Pass null to restore the procedural dance cycle.
+   */
+  setPerformance(performance: ShowPerformance | null): void {
+    this.performance = performance;
+  }
+
+  getPerformance(): ShowPerformance | null {
+    return this.performance;
   }
 
   update(elapsed: number, dt: number, impact: AudienceImpactSource): void {
     this.forEachPerformerOnStage((performer) =>
       this.updatePerformer(performer, elapsed, dt, impact),
     );
-    this.audience.forEach((member) => this.updateAudience(member, elapsed, dt, impact));
+    this.audience.forEach((member, index) =>
+      this.updateAudience(member, index, elapsed, dt, impact),
+    );
     this.props.forEach((prop) => this.updateProp(prop, dt, impact));
     this.stageLights.forEach((light, index) => {
       light.intensity = 33 + Math.sin(elapsed * 2.1 + index * 1.7) * 7;
@@ -282,28 +282,18 @@ export class ShowController {
   }
 
   private animatePerformer(performer: Performer, elapsed: number): void {
-    writeDancePose(elapsed, performer.index, performer.dancePose);
-    const source = performer.dancePose;
-    const target = performer.poseTarget;
-    resetPersonPose(target);
-    target.bodyY = source.bodyBounce;
-    target.pelvisTwist = source.bodyTwist;
-    target.neckY = source.headTurn;
-    target.leftShoulderX = source.armSwing;
-    target.rightShoulderX = source.oppositeArm;
-    target.leftShoulderZ = -0.12 - Math.max(0, source.oppositeArm) * 0.5;
-    target.rightShoulderZ = 0.12 + Math.max(0, source.armSwing) * 0.5;
-    target.leftElbow = source.leftElbow;
-    target.rightElbow = source.rightElbow;
-    target.leftHipX = source.legSwing;
-    target.rightHipX = -source.legSwing;
-    target.leftKnee = source.leftKnee;
-    target.rightKnee = source.rightKnee;
-    target.leftAnkleX = source.leftAnkle;
-    target.rightAnkleX = source.rightAnkle;
-    applyPersonPose(performer.rig, target, 1);
-    performer.rig.group.position.x =
-      performer.baseX + Math.sin(elapsed * Math.PI + performer.index * 0.4) * 0.12;
+    if (this.performance) {
+      sampleCapturedDance(
+        this.performance.clip,
+        this.performance.time,
+        performer.poseTarget,
+        { loop: this.performance.loop ?? true },
+      );
+    } else {
+      writeIdolDancePose(elapsed, performer.index, performer.poseTarget);
+    }
+    applyIdolDancePose(performer.rig, performer.poseTarget);
+    performer.rig.group.position.x = performer.baseX;
   }
 
   private updatePerformer(
@@ -326,7 +316,7 @@ export class ShowController {
     if (state.phase === "home") {
       performer.rig.group.position.y = performer.homeY;
       performer.rig.group.position.z = performer.homeZ;
-      performer.rig.group.rotation.y = Math.PI;
+      performer.rig.group.rotation.y = PERFORMER_HOME_YAW;
       this.animatePerformer(performer, elapsed);
       return;
     }
@@ -336,32 +326,15 @@ export class ShowController {
     this.animateKnockedCharacter(performer.rig, state, performer.poseTarget);
   }
 
-  private animateAudience(member: AudienceMember, elapsed: number): void {
-    const phase = elapsed * (2.2 + member.variant * 0.16) + member.phase;
-    const sway = Math.sin(phase) * 0.18;
-    const step = Math.sin(phase * 0.75);
-    const target = member.poseTarget;
-    resetPersonPose(target);
-    target.bodyY =
-      member.variant === 2 ? Math.max(0, Math.sin(phase * 0.5)) * 0.08 : 0;
-    target.chestZ = sway * 0.24;
-    target.leftShoulderX = sway;
-    target.leftShoulderZ = 0.12;
-    target.rightShoulderX = member.variant === 0 ? -1.8 + sway * 0.3 : -sway;
-    target.rightShoulderZ = member.variant === 0 ? 0.55 : 0.12;
-    target.leftElbow = 0.16 + Math.max(0, step) * 0.18;
-    target.rightElbow = 0.16 + Math.max(0, -step) * 0.18;
-    target.leftHipX = step * 0.2;
-    target.rightHipX = -step * 0.2;
-    target.leftKnee = 0.1 + Math.max(0, step) * 0.22;
-    target.rightKnee = 0.1 + Math.max(0, -step) * 0.22;
-    target.leftAnkleX = target.leftKnee - target.leftHipX;
-    target.rightAnkleX = target.rightKnee - target.rightHipX;
-    applyPersonPose(member.rig, target, 1);
+  private animateAudience(member: AudienceMember, elapsed: number, index: number): void {
+    writeAudienceCheerPose(elapsed + member.phase, index, member.poseTarget);
+    applyPersonPose(member.rig, member.poseTarget, 1);
+    applyAudiencePenlight(member.rig, elapsed + member.phase, index);
   }
 
   private updateAudience(
     member: AudienceMember,
+    index: number,
     elapsed: number,
     dt: number,
     impact: AudienceImpactSource,
@@ -381,7 +354,7 @@ export class ShowController {
     if (state.phase === "home") {
       member.rig.group.position.set(state.homeX, member.homeY, state.homeZ);
       member.rig.group.rotation.y = 0;
-      this.animateAudience(member, elapsed);
+      this.animateAudience(member, elapsed, index);
       return;
     }
 
@@ -558,46 +531,4 @@ export class ShowController {
     target.rightAnkleX = target.rightKnee - target.rightHipX;
     applyPersonPose(rig, target, 1);
   }
-}
-
-export function getDancePose(time: number, idolIndex: number): DancePose {
-  const pose = createDancePose();
-  writeDancePose(time, idolIndex, pose);
-  return pose;
-}
-
-function createDancePose(): DancePose {
-  return {
-    armSwing: 0,
-    oppositeArm: 0,
-    legSwing: 0,
-    bodyBounce: 0,
-    bodyTwist: 0,
-    headTurn: 0,
-    leftElbow: 0,
-    rightElbow: 0,
-    leftKnee: 0,
-    rightKnee: 0,
-    leftAnkle: 0,
-    rightAnkle: 0,
-  };
-}
-
-function writeDancePose(time: number, idolIndex: number, pose: DancePose): void {
-  const microseconds = Math.round((time + idolIndex * 0.018) * 1_000_000);
-  const phase = ((microseconds % 4_000_000) / 4_000_000) * Math.PI * 2;
-  const beat = phase * 4;
-  const step = Math.sin(beat);
-  pose.armSwing = step * 0.72 - 0.35;
-  pose.oppositeArm = -step * 0.72 - 0.35;
-  pose.legSwing = step * 0.2;
-  pose.bodyBounce = Math.abs(step) * 0.08;
-  pose.bodyTwist = Math.sin(phase * 2) * 0.16;
-  pose.headTurn = Math.sin(phase) * 0.16;
-  pose.leftElbow = 0.2 + Math.max(0, step) * 0.32;
-  pose.rightElbow = 0.2 + Math.max(0, -step) * 0.32;
-  pose.leftKnee = 0.1 + Math.max(0, step) * 0.32;
-  pose.rightKnee = 0.1 + Math.max(0, -step) * 0.32;
-  pose.leftAnkle = pose.leftKnee - pose.legSwing;
-  pose.rightAnkle = pose.rightKnee + pose.legSwing;
 }

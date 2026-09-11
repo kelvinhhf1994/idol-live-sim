@@ -38,6 +38,13 @@ export interface PersonPose {
   leftAnkleZ: number;
   rightAnkleX: number;
   rightAnkleZ: number;
+  /** Foot plant targets in the idol group's coordinate system. */
+  leftFootX: number;
+  leftFootY: number;
+  leftFootZ: number;
+  rightFootX: number;
+  rightFootY: number;
+  rightFootZ: number;
 }
 
 export type PersonPoseLayer = Partial<PersonPose>;
@@ -78,6 +85,12 @@ const neutralPose: Readonly<PersonPose> = {
   leftAnkleZ: 0,
   rightAnkleX: 0,
   rightAnkleZ: 0,
+  leftFootX: -0.14,
+  leftFootY: 0,
+  leftFootZ: 0,
+  rightFootX: 0.14,
+  rightFootY: 0,
+  rightFootZ: 0,
 };
 
 export function createPersonPose(): PersonPose {
@@ -139,7 +152,7 @@ export function applyPersonPose(rig: PersonRig, pose: PersonPose, blend: number)
   rig.body.position.y = mix(rig.body.position.y, pose.bodyY, amount);
   rig.body.position.x = mix(rig.body.position.x, pose.bodyPositionX, amount);
   setRotation(rig.body, pose.bodyX, pose.bodyYaw, pose.bodyZ, amount);
-  rig.pelvis.position.y = mix(rig.pelvis.position.y, 0.64 + pose.pelvisY, amount);
+  rig.pelvis.position.y = mix(rig.pelvis.position.y, rig.pelvisRestY + pose.pelvisY, amount);
   setRotation(rig.pelvis, pose.pelvisX, pose.pelvisTwist, pose.pelvisZ, amount);
   setRotation(rig.chest, pose.chestX, pose.chestY, pose.chestZ, amount);
   setRotation(rig.neck, pose.neckX, pose.neckY, pose.neckZ, amount);

@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BLACKBOX · live house playground</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: #0c0b10;
+      color: #efe7d6;
+      font: 13px/1.45 system-ui, "PingFang TC", "Noto Sans TC", sans-serif;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    #hud {
+      position: fixed;
+      left: 14px;
+      top: 12px;
+      pointer-events: none;
+      max-width: 28rem;
+    }
+
+    #hud h1 {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: 0.06em;
+    }
+
+    #hud p {
+      margin: 4px 0 0;
+      color: #b9a892;
+    }
+
+    #readout {
+      position: fixed;
+      right: 14px;
+      top: 12px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: #7fd7c8;
+    }
+
+    #hint {
+      position: fixed;
+      left: 14px;
+      bottom: 12px;
+      color: #8c7d6c;
+    }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.185.1/build/three.module.js" } }
+  </script>
+</head>
+
+<body>
+  <div id="hud">
+    <h1>BLACKBOX · live house playground</h1>
+    <p>給另一個 agent 改 LAYOUT / buildVenue()。人用 WASD 走進場後再交回這個檔。</p>
+  </div>
+  <div id="readout">x 0.00 · z 0.00 · y 0.00<br />zone —</div>
+  <div id="hint">WASD 移動 · 拖曳轉鏡頭 · Space 跳 · C 第一／三人稱</div>
+  <script type="module">
+    /**
+     * BLACKBOX LIVE HOUSE PLAYGROUND
+     *
+     * buildVenue() returns { group, colliders, platforms, spawn, bounds }.
+     * Collider: { minX, maxX, minZ, maxZ, maxY? }.
+     * Platform: { minX, maxX, minZ, maxZ, height }.
+     *
+     * +X is audience-right, +Y is up, +Z is toward the entrance and FOH.
+     * The audience faces -Z. The stage is against the most-negative Z wall.
+     * Venue geometry uses boxes, curtain planes, and the label helper.
+     */
+
+    import * as THREE from "three";
+
+    // ---------------------------------------------------------------------------
+    // LAYOUT
+    // ---------------------------------------------------------------------------
+    const L = {
+      halfW: 4.6,          // inner half-width; hall is 9.2m wide
+      wallT: 0.2,
+      backZ: -8.0,         // inner face of stage-end curtain wall
+      stage: { minX: -3.15, maxX: 3.15, minZ: -8.0, maxZ: -5.15, h: 0.88 },
+      hallMaxZ: 6.35,      // front face of FOH desk / start of alcove
+      fohZ: 8.15,          // inner face of entrance-end wall
+      hallCeil: 3.55,
+      loftY: 2.25,         // glass loft floor
+      loftH: 1.25,
+      spawn: { x: 0, y: 0, z: 1.2, yaw: 0 },
+    };
+
+    const readout = document.getElementById("readout");
+    const keys = new Set();
+    const dummyRadius = 0.34;
+    const walkSpeed = 3.2;
+
+    addEventListener("keydown", (e) => { keys.add(e.code); if (e.code === "Space") e.preventDefault(); });
+    addEventListener("keyup", (e) => keys.delete(e.code));
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    document.body.prepend(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0c0b10);
+    scene.fog = new THREE.Fog(0x0c0b10, 22, 48);
+
+    const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 80);
+    const venue = buildVenue();
+    scene.add(venue.group);
+
+    const dummy = makeDummy();
+    scene.add(dummy.group);
+
+    const player = {
+      x: L.spawn.x, y: L.spawn.y, z: L.spawn.z,
+      yaw: L.spawn.yaw, vy: 0, grounded: true,
+    };
+    const look = { yaw: 0, pitch: -0.12, mode: "third", dragging: false, lastX: 0, lastY: 0 };
+
+    renderer.domElement.addEventListener("pointerdown", (e) => {
+      look.dragging = true;
+      look.lastX = e.clientX;
+      look.lastY = e.clientY;
+      renderer.domElement.setPointerCapture(e.pointerId);
+    });
+    renderer.domElement.addEventListener("pointermove", (e) => {
+      if (!look.dragging) return;
+      look.yaw -= (e.clientX - look.lastX) * 0.005;
+      look.pitch = clamp(look.pitch - (e.clientY - look.lastY) * 0.004, -0.7, 0.55);
+      look.lastX = e.clientX;
+      look.lastY = e.clientY;
+    });
+    renderer.domElement.addEventListener("pointerup", () => { look.dragging = false; });
+    addEventListener("keydown", (e) => { if (e.code === "KeyC") look.mode = look.mode === "third" ? "first" : "third"; });
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    const clock = new THREE.Clock();
+    function tick() {
+      const dt = Math.min(clock.getDelta(), 0.05);
+      stepPlayer(dt);
+      dummy.group.position.set(player.x, player.y, player.z);
+      dummy.group.rotation.y = player.yaw;
+      dummy.group.visible = look.mode === "third";
+      updateCamera();
+      readout.innerHTML = `x ${player.x.toFixed(2)} · z ${player.z.toFixed(2)} · y ${player.y.toFixed(2)}<br />zone ${zoneName(player.z)}`;
+      renderer.render(scene, camera);
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    // ---------------------------------------------------------------------------
+    // Dummy + walk. Do not add actions here.
+    // ---------------------------------------------------------------------------
+    function makeDummy() {
+      const group = new THREE.Group();
+      const skin = mat(0xd8b39a);
+      const cloth = mat(0x2a3344);
+      box(group, 0.34, 0.52, 0.22, cloth, 0, 1.12, 0);
+      box(group, 0.22, 0.22, 0.22, skin, 0, 1.52, 0);
+      box(group, 0.12, 0.46, 0.12, cloth, -0.1, 0.46, 0);
+      box(group, 0.12, 0.46, 0.12, cloth, 0.1, 0.46, 0);
+      return { group };
+    }
+
+    function stepPlayer(dt) {
+      const ix = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+      const iz = (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0);
+      const len = Math.hypot(ix, iz);
+      if (len > 0.01) {
+        const nx = ix / len;
+        const nz = iz / len;
+        const fx = -Math.sin(look.yaw);
+        const fz = -Math.cos(look.yaw);
+        const rx = Math.cos(look.yaw);
+        const rz = -Math.sin(look.yaw);
+        const mx = rx * nx + fx * nz;
+        const mz = rz * nx + fz * nz;
+        const dist = walkSpeed * dt;
+        const next = moveCircle(player, mx * dist, mz * dist, dummyRadius, venue.colliders, player.y);
+        const x = clamp(next.x, venue.bounds.minX + 0.35, venue.bounds.maxX - 0.35);
+        const z = clamp(next.z, venue.bounds.minZ + 0.35, venue.bounds.maxZ - 0.35);
+        const step = groundAt(x, z) - groundAt(player.x, player.z);
+        if (player.grounded && Math.abs(step) <= 0.22 || !player.grounded && step <= 0.001) {
+          player.x = x;
+          player.z = z;
+        }
+        player.yaw = Math.atan2(-mx, -mz);
+      }
+      const ground = groundAt(player.x, player.z);
+      if (keys.has("Space") && player.grounded) {
+        player.vy = 6.2;
+        player.grounded = false;
+        keys.delete("Space");
+      }
+      if (!player.grounded) {
+        player.vy -= 14 * dt;
+        player.y += player.vy * dt;
+        if (player.vy <= 0 && player.y <= ground) {
+          player.y = ground;
+          player.vy = 0;
+          player.grounded = true;
+        }
+      } else {
+        player.y = ground;
+      }
+    }
+
+    function updateCamera() {
+      if (look.mode === "first") {
+        camera.position.set(player.x, player.y + 1.55, player.z);
+      } else {
+        const tx = player.x;
+        const ty = player.y + 1.3;
+        const tz = player.z;
+        camera.position.set(tx + Math.sin(look.yaw) * 4.2, player.y + 2.3, tz + Math.cos(look.yaw) * 4.2);
+        camera.position.x = clamp(camera.position.x, venue.bounds.minX + 0.2, venue.bounds.maxX - 0.2);
+        camera.position.z = clamp(camera.position.z, venue.bounds.minZ + 0.2, venue.bounds.maxZ + 0.4);
+      }
+      camera.lookAt(
+        camera.position.x - Math.sin(look.yaw) * Math.cos(look.pitch),
+        camera.position.y + Math.sin(look.pitch),
+        camera.position.z - Math.cos(look.yaw) * Math.cos(look.pitch),
+      );
+    }
+
+    function groundAt(x, z) {
+      let h = L.spawn.y;
+      for (const p of venue.platforms) {
+        if (x >= p.minX && x <= p.maxX && z >= p.minZ && z <= p.maxZ && p.height > h) h = p.height;
+      }
+      return h;
+    }
+
+    function zoneName(z) {
+      if (z < L.stage.maxZ) return "stage";
+      if (z > L.hallMaxZ) return "foh";
+      return "hall";
+    }
+
+    // ---------------------------------------------------------------------------
+    // Venue
+    // ---------------------------------------------------------------------------
+    function buildVenue() {
+      const group = new THREE.Group();
+      group.name = "blackbox";
+      const colliders = [];
+      const platforms = [];
+      const mats = {
+        floor: mat(0xcfc8bc),
+        wall: mat(0x141414),
+        ceiling: mat(0x0e0e10),
+        curtain: mat(0x111113),
+        black: mat(0x151517),
+        steel: mat(0xb7bcc4, 0.55, 0.4),
+        pipe: mat(0xbfc3c8, 0.5, 0.35),
+        white: mat(0xf3f3ef, 0.02, 0.75),
+        mixer: mat(0xc4c7cb, 0.15, 0.6),
+        red: mat(0xb51e2a),
+        exit: mat(0x681c25),
+        foam: mat(0x5a5a60),
+        glass: new THREE.MeshStandardMaterial({
+          color: 0xdff4ff, transparent: true, opacity: 0.22,
+          roughness: 0.05, side: THREE.DoubleSide, depthWrite: false,
+        }),
+        fluorescent: new THREE.MeshStandardMaterial({
+          color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.2,
+        }),
+      };
+
+      scene.add(new THREE.HemisphereLight(0xf3f7ff, 0x77736c, 1.65));
+      const key = new THREE.DirectionalLight(0xfff6e8, 2.1);
+      key.position.set(-3, 7, 4);
+      scene.add(key);
+      const hallFill = new THREE.PointLight(0xf2f5ff, 85, 22, 1.5);
+      hallFill.position.set(0, 3.05, 0.2);
+      group.add(hallFill);
+
+      buildHall(group, mats, colliders);
+      buildStage(group, mats, colliders, platforms);
+      buildStageStairs(group, mats, colliders, platforms);
+      buildExit(group, mats, colliders);
+      buildSecondFloorStairs(group, mats, colliders, platforms);
+      buildLoft(group, mats, colliders);
+      buildFoh(group, mats, colliders);
+      buildAlcove(group, mats, colliders);
+      buildWallProps(group, mats, colliders);
+
+      return {
+        group, colliders, platforms, spawn: L.spawn,
+        bounds: { minX: -L.halfW, maxX: L.halfW, minZ: L.backZ, maxZ: L.fohZ },
+      };
+    }
+
+    function buildHall(group, mats, colliders) {
+      const hall = new THREE.Group();
+      hall.name = "hall-shell";
+      const depth = L.fohZ - L.backZ;
+      const cz = (L.backZ + L.fohZ) / 2;
+      const h = L.hallCeil;
+      box(hall, 9.2, 0.2, depth, mats.floor, 0, -0.1, cz);
+      box(hall, 9.2, 0.2, depth, mats.ceiling, 0, h + 0.1, cz);
+      wall(hall, mats.wall, colliders, 9.6, h, L.wallT, 0, h / 2, L.backZ - 0.1);
+      for (const side of [-1, 1]) {
+        wall(hall, mats.wall, colliders, L.wallT, h, depth, side * 4.7, h / 2, cz);
+        const curtain = new THREE.Mesh(new THREE.PlaneGeometry(depth - 0.08, h - 0.08), mats.curtain);
+        curtain.position.set(side * 4.565, h / 2, cz);
+        curtain.rotation.y = -side * Math.PI / 2;
+        hall.add(curtain);
+      }
+      const rearCurtain = new THREE.Mesh(new THREE.PlaneGeometry(9.12, h - 0.06), mats.curtain);
+      rearCurtain.position.set(0, h / 2, L.backZ + 0.025);
+      hall.add(rearCurtain);
+
+      // Offset entrance: solid side sections and a lintel above the clear opening.
+      const wallZ = L.fohZ + L.wallT / 2;
+      wall(hall, mats.wall, colliders, 1.05, h, L.wallT, -4.075, h / 2, wallZ);
+      wall(hall, mats.wall, colliders, 6.75, h, L.wallT, 1.225, h / 2, wallZ);
+      box(hall, 1.4, h - 2.2, L.wallT, mats.wall, -2.85, 2.2 + (h - 2.2) / 2, wallZ);
+      box(hall, 0.05, 2.2, 0.24, mats.steel, -3.575, 1.1, wallZ);
+      box(hall, 0.05, 2.2, 0.24, mats.steel, -2.125, 1.1, wallZ);
+      box(hall, 1.5, 0.05, 0.24, mats.steel, -2.85, 2.225, wallZ);
+
+      for (const z of [-6.4, -1.2, 3.4]) {
+        box(hall, 9.05, 0.075, 0.075, mats.pipe, 0, 3.15, z);
+        for (const x of [-3.7, 3.7]) {
+          box(hall, 0.035, 0.34, 0.035, mats.black, x, 3.35, z);
+        }
+      }
+      for (let i = 0; i < 8; i++) {
+        const x = -2.975 + i * 0.85;
+        box(hall, 0.055, 0.12, 0.055, mats.black, x, 3.06, -6.4);
+        box(hall, 0.2, 0.22, 0.22, mats.black, x, 2.92, -6.4);
+      }
+      for (const side of [-1, 1]) {
+        box(hall, 0.035, 0.24, 0.035, mats.steel, side * 4.15, 3.045, -5.6);
+        box(hall, 0.7, 0.45, 0.45, mats.black, side * 4.15, 2.7, -5.6);
+      }
+      for (const z of [-5.1, 0.2, 5.1]) {
+        for (const x of [-2.1, 2.1]) {
+          box(hall, 1.45, 0.035, 0.12, mats.fluorescent, x, h - 0.055, z);
+        }
+      }
+      group.add(hall);
+    }
+
+    function buildStage(group, mats, colliders, platforms) {
+      const stage = new THREE.Group();
+      stage.name = "stage";
+      const s = L.stage;
+      const w = s.maxX - s.minX;
+      const d = s.maxZ - s.minZ;
+      const cz = (s.minZ + s.maxZ) / 2;
+      box(stage, w, s.h, d, mats.black, 0, s.h / 2, cz);
+      solid(colliders, s.minX, s.maxX, s.minZ, s.maxZ, 0.88);
+      platforms.push({ minX: s.minX, maxX: s.maxX, minZ: s.minZ, maxZ: s.maxZ, height: s.h });
+
+      // Truss skirt remains below the deck surface, never a crowd barrier.
+      for (const y of [0.1, 0.76]) {
+        box(stage, w, 0.055, 0.055, mats.steel, 0, y, s.maxZ + 0.025);
+        for (const side of [-1, 1]) {
+          box(stage, 0.055, 0.055, d, mats.steel, side * 3.15, y, cz);
+        }
+      }
+      for (let i = 0; i <= 9; i++) {
+        box(stage, 0.045, 0.66, 0.045, mats.steel, -3.15 + i * 0.7, 0.43, -5.12);
+        if (i < 9) {
+          const brace = box(stage, 0.045, Math.hypot(0.7, 0.66), 0.045, mats.steel, -2.8 + i * 0.7, 0.43, -5.12);
+          brace.rotation.z = (i % 2 ? 1 : -1) * Math.atan2(0.7, 0.66);
+        }
+      }
+      for (const side of [-1, 1]) {
+        for (const z of [-7.85, -7.0, -6.15, -5.3]) {
+          box(stage, 0.045, 0.66, 0.045, mats.steel, side * 3.15, 0.43, z);
+        }
+      }
+      box(stage, w, 0.012, 0.055, mats.white, 0, s.h + 0.006, s.maxZ - 0.04);
+      for (const x of [-2.4, -1.2, 0, 1.2, 2.4]) {
+        box(stage, 0.56, 0.28, 0.34, mats.black, x, 0.88 + 0.14, -5.35);
+      }
+      label(stage, "STAGE", 0, 1.6, -6.5, 0, "#ffffff", "#141414", 1.6, 0.34);
+      group.add(stage);
+    }
+
+    function buildStageStairs(group, mats, colliders, platforms) {
+      const stairs = new THREE.Group();
+      stairs.name = "stage-stairs";
+      for (const side of [-1, 1]) {
+        const minX = side < 0 ? -4.15 : 3.20;
+        const maxX = side < 0 ? -3.20 : 4.15;
+        // The upper tread meets a short turning landing beside the deck.
+        for (let i = 0; i < 4; i++) {
+          const z0 = -5.15 + (3 - i) * 0.42;
+          const height = i === 3 ? 0.88 : 0.22 * (i + 1);
+          buildTread(stairs, mats, colliders, platforms, minX, maxX, z0, z0 + 0.42, height, 0.22);
+        }
+        const landingMinX = side < 0 ? -4.15 : 3.15;
+        const landingMaxX = side < 0 ? -3.15 : 4.15;
+        buildTread(stairs, mats, colliders, platforms, landingMinX, landingMaxX, -5.65, -5.15, 0.88, 0);
+        wall(stairs, mats.white, colliders, 0.045, 1.05, 0.045, side * 4.15, 0.525, -3.45);
+        box(stairs, 0.045, 0.045, 1.72, mats.white, side * 4.15, 1.05, -4.29);
+        label(stairs, side < 0 ? "STAIR L" : "STAIR R", side * 3.65, 1.43, -4.55, 0, "#ffffff", "#242428", 0.82, 0.23);
+      }
+      group.add(stairs);
+    }
+
+    function buildTread(group, mats, colliders, platforms, minX, maxX, minZ, maxZ, height, rise) {
+      const cx = (minX + maxX) / 2;
+      const cz = (minZ + maxZ) / 2;
+      box(group, maxX - minX, height, maxZ - minZ, mats.black, cx, height / 2, cz);
+      box(group, maxX - minX, 0.01, 0.025, mats.white, cx, height + 0.005, maxZ - 0.018);
+      platforms.push({ minX, maxX, minZ, maxZ, height });
+
+      // Toe support starts before the center reaches a riser. This also avoids
+      // floating-point rejection at the original walker's exact 0.22 step limit.
+      if (rise > 0) {
+        platforms.push({
+          minX, maxX, minZ: maxZ, maxZ: maxZ + 0.18,
+          height: height - rise / 2,
+        });
+      }
+      const inset = dummyRadius + 0.025;
+      solid(colliders, minX + inset, maxX - inset, minZ,
+        Math.max(minZ + 0.015, maxZ - inset), height - rise / 2);
+    }
+
+    function buildExit(group, mats, colliders) {
+      const exit = new THREE.Group();
+      exit.name = "stage-right-exit";
+      prop(exit, colliders, mats.exit, 1.0, 2.1, 0.08, 4.25, 1.05, -6.55, 3.75, 4.75, -6.59, -6.51);
+      box(exit, 0.035, 0.035, 0.04, mats.steel, 3.87, 1.02, -6.49);
+      label(exit, "EXIT", 4.12, 2.3, -6.48, 0, "#ffffff", "#8c2030", 0.83, 0.27);
+      prop(exit, colliders, mats.black, 0.4, 0.4, 0.4, 4.05, 0.25, -4.85, 3.85, 4.25, -5.05, -4.65);
+      group.add(exit);
+    }
+
+    function buildSecondFloorStairs(group, mats, colliders, platforms) {
+      const stairs = new THREE.Group();
+      stairs.name = "to-2f";
+      for (let i = 0; i < 5; i++) {
+        const z1 = -3.55 - i * 0.26;
+        const height = i === 4 ? 1.20 : 0.24 * (i + 1);
+        buildTread(stairs, mats, colliders, platforms, 3.55, 4.50, z1 - 0.26, z1, height, 0.24);
+      }
+      buildTread(stairs, mats, colliders, platforms, 3.55, 4.50, -5.25, -4.85, 1.20, 0);
+      label(stairs, "TO 2F", 4.0, 1.96, -3.48, 0, "#ffe292", "#262626", 0.86, 0.25);
+      group.add(stairs);
+    }
+
+    function buildLoft(group, mats, colliders) {
+      const loft = new THREE.Group();
+      loft.name = "glass-loft";
+      const minX = -4.6, maxX = -3.15;
+      const minZ = 3.6, maxZ = 8.15;
+      const cx = (minX + maxX) / 2;
+      const cz = (minZ + maxZ) / 2;
+
+      // Hollow base construction leaves the 1.2 m hall-facing doorway usable.
+      wall(loft, mats.wall, colliders, 1.45, L.loftY, 0.12, cx, L.loftY / 2, 3.66);
+      wall(loft, mats.wall, colliders, 0.12, L.loftY, 0.95, -3.21, L.loftY / 2, 4.075);
+      wall(loft, mats.wall, colliders, 0.12, L.loftY, 2.4, -3.21, L.loftY / 2, 6.95);
+      box(loft, 0.12, 0.2, 1.2, mats.wall, -3.21, 2.15, 5.15);
+      box(loft, 1.45, 0.08, 4.55, mats.black, cx, L.loftY - 0.04, cz);
+
+      const gy = L.loftY + L.loftH / 2;
+      for (const x of [minX + 0.025, maxX - 0.025]) {
+        box(loft, 0.018, L.loftH, 4.55, mats.glass, x, gy, cz);
+      }
+      for (const z of [minZ + 0.025, maxZ - 0.025]) {
+        box(loft, 1.45, L.loftH, 0.018, mats.glass, cx, gy, z);
+      }
+      for (const y of [L.loftY, L.loftY + L.loftH]) {
+        box(loft, 1.45, 0.045, 4.55, mats.black, cx, y, cz);
+      }
+      for (const z of [3.625, 5.15, 6.65, 8.125]) {
+        box(loft, 0.055, L.loftH, 0.055, mats.steel, -3.17, gy, z);
+      }
+      for (const x of [-4.575, -3.17]) {
+        box(loft, 0.055, L.loftH, 0.055, mats.steel, x, gy, 3.625);
+      }
+      [0xe8b264, 0xb296d2, 0x7ebbb3].forEach((color, i) => {
+        box(loft, 0.3, 0.35, 0.3, mat(color), -3.63, L.loftY + 0.175, 4.0 + i * 0.7);
+      });
+
+      box(loft, 0.55, 0.06, 0.55, mats.white, -3.55, 1.02, 3.15);
+      for (const x of [-3.77, -3.33]) {
+        box(loft, 0.045, 1.0, 0.045, mats.white, x, 0.5, 2.93);
+        box(loft, 0.045, 1.0, 0.045, mats.white, x, 0.5, 3.37);
+      }
+      solid(colliders, -3.825, -3.275, 2.875, 3.425);
+      prop(loft, colliders, mats.black, 0.32, 0.62, 0.32, -4.12, 0.31, 3.08, -4.28, -3.96, 2.92, 3.24);
+      label(loft, "LOFT", -3.125, 2.89, 4.22, Math.PI / 2, "#effaff", "#29333c", 0.85, 0.25);
+      label(loft, "LOFT", cx, 2.88, 3.58, Math.PI, "#effaff", "#29333c", 1.0, 0.27);
+      group.add(loft);
+    }
+
+    function buildFoh(group, mats, colliders) {
+      const foh = new THREE.Group();
+      foh.name = "foh-panel";
+      box(foh, 2.7, 1.05, 0.95, mats.black, 0, 0.52, 7.05);
+      solid(colliders, -1.35, 1.35, 6.575, 7.525, 1.15);
+      box(foh, 1.6, 0.06, 0.55, mats.mixer, 0, 1.075, 6.92);
+      box(foh, 0.38, 0.012, 0.18, mat(0x364b55), -0.47, 1.111, 6.82);
+      for (let i = 0; i < 10; i++) {
+        const x = -0.15 + i * 0.075;
+        box(foh, 0.012, 0.008, 0.2, mats.black, x, 1.112, 6.98);
+        box(foh, 0.038, 0.018, 0.033, mats.white, x, 1.12, 6.93 + (i % 3) * 0.045);
+      }
+      label(foh, "FOH / PANEL", 0, 1.47, 6.55, Math.PI, "#ffffff", "#222226", 1.75, 0.3);
+      label(foh, "FOH / PANEL", 0, 0.78, 7.535, 0, "#e4e7ec", "#151517", 1.75, 0.3);
+
+      prop(foh, colliders, mats.red, 0.55, 1.55, 0.55, -2.85, 0.78, 7.55, -3.125, -2.575, 7.275, 7.825);
+      box(foh, 0.025, 0.62, 0.025, mats.white, -2.64, 0.85, 7.258);
+      label(foh, "COKE", -2.85, 1.23, 7.265, Math.PI, "#ffffff", "#b51e2a", 0.47, 0.2);
+      prop(foh, colliders, mats.white, 0.5, 0.5, 0.5, 1.85, 0.37, 7.15, 1.6, 2.1, 6.9, 7.4);
+      group.add(foh);
+    }
+
+    function buildAlcove(group, mats, colliders) {
+      const alcove = new THREE.Group();
+      alcove.name = "entrance-alcove";
+      wall(alcove, mats.foam, colliders, 0.8, 2.4, 1.5, 1.95, 1.2, 7.3);
+      for (let row = 0; row < 6; row++) {
+        for (let col = 0; col < 4; col++) {
+          box(alcove, 0.035, 0.34, 0.31, mats.foam, 1.533, 0.2 + row * 0.4, 6.75 + col * 0.36);
+        }
+      }
+      label(alcove, "ENTRANCE", -2.85, 2.53, L.fohZ + L.wallT + 0.015, 0, "#ffffff", "#25252a", 1.45, 0.29);
+      label(alcove, "ENTRANCE", -2.85, 2.53, L.fohZ - 0.015, Math.PI, "#ffffff", "#25252a", 1.45, 0.29);
+      group.add(alcove);
+    }
+
+    function buildWallProps(group, mats, colliders) {
+      const props = new THREE.Group();
+      props.name = "wall-props";
+      prop(props, colliders, mats.steel, 1.15, 1.85, 0.65, 4.05, 0.93, 2.35, 3.475, 4.625, 2.025, 2.675);
+      box(props, 0.014, 1.7, 0.59, mats.mixer, 3.468, 0.95, 2.35);
+      box(props, 0.025, 1.62, 0.018, mats.black, 3.45, 0.94, 2.35);
+      box(props, 0.035, 0.38, 0.025, mats.steel, 3.42, 1.07, 2.28);
+      label(props, "FRIDGE", 3.425, 1.52, 2.35, -Math.PI / 2, "#202329", "#d9dde1", 0.58, 0.18);
+      box(props, 0.04, 0.04, 1.3, mats.white, 3.7, 2.05, 2.35);
+      for (const z of [1.75, 2.95]) {
+        box(props, 0.025, 1.45, 0.025, mats.white, 3.7, 2.785, z);
+      }
+
+      prop(props, colliders, mats.black, 0.5, 1.4, 0.45, -2.2, 0.7, 6.0, -2.45, -1.95, 5.775, 6.225);
+      box(props, 0.42, 1.22, 0.016, mats.glass, -2.2, 0.71, 5.766);
+      for (const y of [0.25, 0.65, 1.05]) {
+        box(props, 0.4, 0.018, 0.32, mats.white, -2.2, y, 6.0);
+        box(props, 0.1, 0.2, 0.1, mats.red, -2.29, y + 0.11, 5.98);
+        box(props, 0.1, 0.2, 0.1, mats.white, -2.11, y + 0.11, 5.98);
+      }
+      group.add(props);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Tiny helpers. Prefer these when adding new rooms/props.
+    // ---------------------------------------------------------------------------
+    function mat(color, metalness = 0.04, roughness = 0.8, emissive = 0x000000) {
+      return new THREE.MeshStandardMaterial({ color, metalness, roughness, emissive });
+    }
+
+    function box(parent, w, h, d, material, x, y, z) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      mesh.position.set(x, y, z);
+      parent.add(mesh);
+      return mesh;
+    }
+
+    function wall(parent, material, colliders, w, h, d, x, y, z) {
+      box(parent, w, h, d, material, x, y, z);
+      solid(colliders, x - w / 2, x + w / 2, z - d / 2, z + d / 2);
+    }
+
+    function doorWall(parent, mats, colliders, z, h, doorHalf, doorH, fill) {
+      const sideW = L.halfW - doorHalf;
+      box(parent, sideW, h, L.wallT, fill, -(doorHalf + sideW / 2), h / 2, z);
+      box(parent, sideW, h, L.wallT, fill, doorHalf + sideW / 2, h / 2, z);
+      box(parent, doorHalf * 2, Math.max(0.1, h - doorH), L.wallT, fill, 0, doorH + (h - doorH) / 2, z);
+      solid(colliders, -L.halfW, -doorHalf, z - 0.15, z + 0.15);
+      solid(colliders, doorHalf, L.halfW, z - 0.15, z + 0.15);
+      box(parent, 0.1, doorH, 0.16, mats.steel, -doorHalf, doorH / 2, z);
+      box(parent, 0.1, doorH, 0.16, mats.steel, doorHalf, doorH / 2, z);
+    }
+
+    function prop(parent, colliders, material, w, h, d, x, y, z, minX, maxX, minZ, maxZ) {
+      box(parent, w, h, d, material, x, y, z);
+      solid(colliders, minX, maxX, minZ, maxZ);
+    }
+
+    function solid(colliders, minX, maxX, minZ, maxZ, maxY) {
+      const c = { minX, maxX, minZ, maxZ };
+      if (maxY !== undefined) c.maxY = maxY;
+      colliders.push(c);
+    }
+
+    function label(parent, text, x, y, z, rotY, fg, bg, w, h) {
+      const c = document.createElement("canvas");
+      c.width = 512;
+      c.height = 128;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, 512, 128);
+      ctx.fillStyle = fg;
+      ctx.font = "bold 42px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, 256, 64);
+      const tex = new THREE.CanvasTexture(c);
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
+      mesh.position.set(x, y, z);
+      mesh.rotation.y = rotY;
+      parent.add(mesh);
+    }
+
+    function moveCircle(pos, dx, dz, r, colliders, y) {
+      const next = { x: pos.x, z: pos.z };
+      const tryX = { x: pos.x + dx, z: pos.z };
+      if (!colliders.some((c) => hits(pos, tryX, r, c, y, "x"))) next.x = tryX.x;
+      const tryZ = { x: next.x, z: pos.z + dz };
+      if (!colliders.some((c) => hits({ x: next.x, z: pos.z }, tryZ, r, c, y, "z"))) next.z = tryZ.z;
+      return next;
+    }
+
+    function hits(start, end, r, c, y, axis) {
+      if (c.maxY !== undefined && y >= c.maxY) return false;
+      if (c.maxY !== undefined && overlap(start, r, c)) return false;
+      if (overlap(end, r, c)) return true;
+      if (axis === "x") {
+        if (start.z < c.minZ - r || start.z > c.maxZ + r) return false;
+        return (start.x < c.minX - r && end.x > c.maxX + r) || (start.x > c.maxX + r && end.x < c.minX - r);
+      }
+      if (start.x < c.minX - r || start.x > c.maxX + r) return false;
+      return (start.z < c.minZ - r && end.z > c.maxZ + r) || (start.z > c.maxZ + r && end.z < c.minZ - r);
+    }
+
+    function overlap(p, r, c) {
+      const dx = p.x - clamp(p.x, c.minX, c.maxX);
+      const dz = p.z - clamp(p.z, c.minZ, c.maxZ);
+      return dx * dx + dz * dz < r * r;
+    }
+
+    function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  </script>
+</body>
+
+</html>

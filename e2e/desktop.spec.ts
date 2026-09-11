@@ -626,7 +626,6 @@ test("hides YouTube controls and supports penlight plus settings panels", async 
   await page.getByRole("button", { name: "關閉螢光棒面板" }).click();
   await expect(page.getByRole("dialog", { name: "螢光棒" })).toBeHidden();
 
-  await page.getByRole("button", { name: "舉棒" }).click();
   await expect.poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().penlightPose)).toBe("raise");
   await page.getByRole("button", { name: "指台" }).click();
   await expect.poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().penlightPose)).toBe("point");
@@ -731,4 +730,35 @@ test("enters 九龍灣 via the station selector and can stand in the 2/F glass r
   await expect
     .poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().groundHeight))
     .toBeCloseTo(3.0, 5);
+});
+
+test("selects a song from the top-left panel and drives captured dance", async ({ page }) => {
+  test.slow();
+  await page.goto("/");
+  await page.getByRole("button", { name: "進入場館" }).click();
+  await expect(page.locator("#hud")).toBeVisible();
+
+  const songButton = page.locator("#song-select-button");
+  await expect(songButton).toBeVisible();
+  await expect(songButton).toContainText("選歌");
+  await songButton.click();
+
+  const panel = page.locator("#song-select-panel");
+  await expect(panel).toBeVisible();
+  await panel.getByRole("option", { name: "Demo Loop" }).click();
+
+  await expect
+    .poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().songId))
+    .toBe("demo-loop");
+  await expect
+    .poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().songHasClip))
+    .toBe(true);
+  await expect(songButton).toContainText("Demo Loop");
+
+  await songButton.click();
+  await panel.getByRole("option", { name: "停止歌曲" }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().songId))
+    .toBeNull();
+  await expect(songButton).toContainText("選歌");
 });
