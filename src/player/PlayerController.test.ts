@@ -740,4 +740,81 @@ describe("PlayerController", () => {
     expect(player.beatActive).toBe(false);
     expect(player.penlight.pose).toBe("idle");
   });
+
+  // Synthetic two-level venue: a 3.0 m deck over x∈[-2,2], z∈[-4,4] with a 15-tread stair rising +Z along x∈[3,4]
+  const deckVenue = {
+    ...GENERIC_VENUE,
+    id: "test-two-level",
+    spawn: { x: 0, y: 0, z: 0, yaw: 0 },
+    bounds: { minX: -10, maxX: 10, minZ: -10, maxZ: 10 },
+    colliders: [{ minX: -2, maxX: -1.8, minZ: -4, maxZ: 4, maxY: 3.0 }],
+    platforms: [
+      { bounds: { minX: -2, maxX: 2, minZ: -4, maxZ: 4 }, height: 3.0 },
+      ...Array.from({ length: 15 }, (_, i) => ({
+        bounds: { minX: 3, maxX: 4, minZ: -8 + i * 0.28, maxZ: -8 + (i + 1) * 0.28 },
+        height: 0.2 * (i + 1),
+      })),
+      { bounds: { minX: 2, maxX: 4, minZ: -3.8, maxZ: 4 }, height: 3.0 },
+    ],
+  };
+
+  it("walks underneath a 2/F deck at ground level", () => {
+    const player = new PlayerController(createLowPolyPerson(), deckVenue, deckVenue.colliders);
+    player.position.set(0, 0, 6);
+
+    for (let frame = 0; frame < 60; frame += 1) {
+      player.update(1 / 60, { x: 0, y: -1 }, 0, true);
+    }
+
+    expect(player.position.z).toBeLessThan(4);
+    expect(player.position.y).toBe(0);
+    expect(player.groundHeight).toBe(0);
+  });
+
+  it("climbs a 15-tread stair onto the deck", () => {
+    const player = new PlayerController(createLowPolyPerson(), deckVenue, deckVenue.colliders);
+    player.position.set(3.5, 0, -8.6);
+
+    for (let frame = 0; frame < 240 && player.position.z < -2; frame += 1) {
+      player.update(1 / 60, { x: 0, y: 1 }, 0, true);
+    }
+
+    expect(player.position.z).toBeGreaterThan(-3.8);
+    expect(player.position.y).toBeCloseTo(3.0, 5);
+  });
+
+  it("is blocked at the deck edge instead of dropping to the floor", () => {
+    const player = new PlayerController(createLowPolyPerson(), deckVenue, deckVenue.colliders);
+    player.position.set(0, 3.0, 3.8);
+    player.update(0, { x: 0, y: 0 }, 0, true);
+
+    for (let frame = 0; frame < 30; frame += 1) {
+      player.update(1 / 60, { x: 0, y: 1 }, 0, true);
+    }
+
+    expect(player.position.z).toBeLessThanOrEqual(4);
+    expect(player.position.y).toBeCloseTo(3.0, 5);
+  });
+
+  it("ignores ground-floor walls capped at deck height while standing on the deck", () => {
+    const player = new PlayerController(createLowPolyPerson(), deckVenue, deckVenue.colliders);
+    player.position.set(-1.5, 3.0, 0);
+    player.update(0, { x: 0, y: 0 }, 0, true);
+
+    for (let frame = 0; frame < 30; frame += 1) {
+      player.update(1 / 60, { x: -1, y: 0 }, 0, true);
+    }
+
+    expect(player.position.x).toBeLessThan(-1.8);
+  });
+
+  it("places the player on the deck when a debug placement starts from deck height", () => {
+    const player = new PlayerController(createLowPolyPerson(), deckVenue, deckVenue.colliders);
+
+    player.debugPlaceOnGround(0, 0);
+    expect(player.position.y).toBe(0);
+
+    player.debugPlaceOnGround(0, 0, 3.0);
+    expect(player.position.y).toBe(3.0);
+  });
 });

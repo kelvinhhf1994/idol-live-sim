@@ -199,7 +199,7 @@ export class PlayerController {
         this.venue.bounds.minZ + boundaryPadding,
         this.venue.bounds.maxZ - boundaryPadding,
       );
-      const nextGroundHeight = groundHeightAt(this.venue, nextX, nextZ);
+      const nextGroundHeight = groundHeightAt(this.venue, nextX, nextZ, this.position.y);
       const stepDelta = nextGroundHeight - startingGroundHeight;
       const canStep = !formationActive && Math.abs(stepDelta) <= 0.22;
       if (
@@ -432,7 +432,7 @@ export class PlayerController {
   }
 
   get groundHeight(): number {
-    return groundHeightAt(this.venue, this.position.x, this.position.z);
+    return groundHeightAt(this.venue, this.position.x, this.position.z, this.position.y);
   }
 
   setLiftActive(active: boolean): void {
@@ -489,10 +489,11 @@ export class PlayerController {
     this.group.visible = visible;
   }
 
-  debugPlaceOnGround(x: number, z: number): void {
+  /** Debug teleport. `fromY` picks the level when platforms overlap (e.g. 2/F deck over a vestibule). */
+  debugPlaceOnGround(x: number, z: number, fromY = this.position.y): void {
     this.position.x = x;
     this.position.z = z;
-    this.position.y = this.groundHeight;
+    this.position.y = groundHeightAt(this.venue, x, z, fromY);
     this.verticalVelocity = 0;
     this.grounded = true;
     this.syncTransform();
