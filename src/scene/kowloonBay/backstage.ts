@@ -1,10 +1,13 @@
 import * as THREE from "three";
 import {
   KB_BACKSTAGE_GAP,
+  KB_BACK_WALL_Z,
   KB_DECK_HEIGHT,
   KB_DECK_MIN_Z,
   KB_DOORWAY,
   KB_HALL_CEILING,
+  KB_LANDING,
+  KB_LOWER_STAIR,
   KB_MIN_X,
   KB_PARTITION_X,
   KB_STAGE_FRONT_Z,
@@ -26,12 +29,14 @@ const STRIPE_MAT = new THREE.MeshStandardMaterial({ color: 0xffee00, emissive: 0
 
 export function buildBackstage(group: THREE.Group, mats: SharedMaterials): void {
   buildPartition(group, mats);
-  buildStageStairs(group, mats);
+  buildLanding(group);
+  buildLowerStairs(group, mats);
   buildUpperStairs(group, mats);
   buildUpperDeck(group, mats);
   buildVestibule(group, mats);
   buildGlassRoom(group, mats);
   buildRoadCases(group, mats);
+  buildBackstageLights(group, mats);
 }
 
 /** Floor-to-ceiling black curtain wall between the hall and the two-storey backstage, with the idol gap on 1/F. */
@@ -45,79 +50,101 @@ function buildPartition(group: THREE.Group, mats: SharedMaterials): void {
     mesh.rotation.y = Math.PI / 2;
     partition.add(mesh);
   };
+  // Over the stage wing the 1/F stays open (landing -> stage); the curtain closes the 2/F from deck level up
+  hang(KB_BACK_WALL_Z, KB_STAGE_FRONT_Z, KB_DECK_HEIGHT, KB_HALL_CEILING);
   hang(KB_STAGE_FRONT_Z, KB_BACKSTAGE_GAP.minZ, 0, KB_HALL_CEILING);
   hang(KB_BACKSTAGE_GAP.minZ, KB_BACKSTAGE_GAP.maxZ, GAP_HEAD_Y, KB_HALL_CEILING);
   hang(KB_BACKSTAGE_GAP.maxZ, KB_VESTIBULE.minZ, 0, KB_HALL_CEILING);
   const gapLen = KB_BACKSTAGE_GAP.maxZ - KB_BACKSTAGE_GAP.minZ;
   addBox(partition, 0.12, 0.5, gapLen + 0.2, mats.matteBlack, KB_PARTITION_X, GAP_HEAD_Y + 0.25, (KB_BACKSTAGE_GAP.minZ + KB_BACKSTAGE_GAP.maxZ) / 2, "backstage-gap-valance", false);
-  const trackLen = KB_VESTIBULE.minZ - KB_STAGE_FRONT_Z;
+  const trackLen = KB_VESTIBULE.minZ - KB_BACK_WALL_Z;
   const track = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, trackLen, 8), mats.steel);
   track.rotation.x = Math.PI / 2;
-  track.position.set(KB_PARTITION_X, KB_HALL_CEILING - 0.05, KB_STAGE_FRONT_Z + trackLen / 2);
+  track.position.set(KB_PARTITION_X, KB_HALL_CEILING - 0.05, KB_BACK_WALL_Z + trackLen / 2);
   partition.add(track);
   group.add(partition);
 }
 
-/** Four treads from the corridor floor up onto the stage wing, rising toward +X. */
-function buildStageStairs(group: THREE.Group, mats: SharedMaterials): void {
+/** Stage-height landing filling the stage end of the corridor; its +X edge is open onto the stage wing. */
+function buildLanding(group: THREE.Group): void {
+  const l = KB_LANDING;
+  const w = l.maxX - l.minX;
+  const d = l.maxZ - l.minZ;
+  const deckMat = new THREE.MeshStandardMaterial({ color: 0x141418, roughness: 0.85 });
+  addBox(group, w, KB_STAGE_HEIGHT, d, deckMat, (l.minX + l.maxX) / 2, KB_STAGE_HEIGHT / 2, (l.minZ + l.maxZ) / 2, "backstage-landing");
+  // Yellow edge stripe along the drop toward the corridor, leaving the lower stair open
+  const s = KB_LOWER_STAIR;
+  for (const [a, b] of [[l.minX, s.minX], [s.maxX, l.maxX]] as const) {
+    addBox(group, b - a, 0.03, 0.05, STRIPE_MAT, (a + b) / 2, KB_STAGE_HEIGHT + 0.015, l.maxZ - 0.025, "", false);
+  }
+}
+
+/** Five treads from the corridor floor up to the landing, rising toward -Z, with a handrail on each side. */
+function buildLowerStairs(group: THREE.Group, mats: SharedMaterials): void {
+  const { minX, maxX, topZ, tread, rise, steps } = KB_LOWER_STAIR;
   const stairs = new THREE.Group();
-  stairs.name = "stage-stairs";
-  const treadW = 0.25;
-  const depth = 1.0;
-  const cz = -9.0;
-  for (let i = 0; i < 4; i++) {
-    const h = (KB_STAGE_HEIGHT / 4) * (i + 1);
-    const x = -5.5 + treadW * (i + 0.5);
-    addBox(stairs, treadW, h, depth, STEP_MAT, x, h / 2, cz);
-    addBox(stairs, 0.05, 0.03, depth, STRIPE_MAT, x - treadW / 2 + 0.025, h + 0.015, cz, "", false);
+  stairs.name = "lower-stairs";
+  const width = maxX - minX;
+  const cx = (minX + maxX) / 2;
+  for (let i = 0; i < steps; i++) {
+    const h = rise * (i + 1);
+    const z = topZ + tread * (steps - i - 0.5);
+    addBox(stairs, width, h, tread, STEP_MAT, cx, h / 2, z);
+    addBox(stairs, width, 0.03, 0.05, STRIPE_MAT, cx, h + 0.015, z + tread / 2 - 0.025, "", false);
   }
-  const railZ = cz - depth / 2 - 0.03;
-  for (const [x, h] of [[-5.5, 0.9], [-4.5, 0.9 + KB_STAGE_HEIGHT]] as const) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, h, 6), mats.steel);
-    post.position.set(x, h / 2, railZ);
-    stairs.add(post);
+  const run = tread * steps;
+  const totalRise = rise * steps;
+  const bottomZ = topZ + run;
+  for (const x of [minX - 0.03, maxX + 0.03]) {
+    for (const [z, h] of [[bottomZ, 0.9], [topZ, 0.9 + totalRise]] as const) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, h, 6), mats.steel);
+      post.position.set(x, h / 2, z);
+      stairs.add(post);
+    }
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, Math.hypot(run, totalRise), 6), mats.steel);
+    rail.position.set(x, 0.9 + totalRise / 2, topZ + run / 2);
+    rail.rotation.x = -Math.atan2(run, totalRise); // Rises toward -Z
+    stairs.add(rail);
   }
-  const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, Math.hypot(1.0, KB_STAGE_HEIGHT), 6), mats.steel);
-  rail.position.set(-5.0, 0.9 + KB_STAGE_HEIGHT / 2, railZ);
-  rail.rotation.z = -Math.atan2(1.0, KB_STAGE_HEIGHT); // Rises toward +X
-  stairs.add(rail);
   group.add(stairs);
 }
 
-/** Fifteen steel treads with stringers and handrails, rising toward +Z to the deck. */
+/** Ten steel treads with stringers and handrails, rising from the landing toward -X along the back wall to the deck. */
 function buildUpperStairs(group: THREE.Group, mats: SharedMaterials): void {
-  const { minX, maxX, startZ, tread, rise, steps } = KB_UPPER_STAIR;
+  const { minZ, maxZ, startX, tread, rise, steps } = KB_UPPER_STAIR;
   const stairs = new THREE.Group();
   stairs.name = "upper-stairs";
-  const width = maxX - minX;
-  const cx = (minX + maxX) / 2;
+  const width = maxZ - minZ;
+  const cz = (minZ + maxZ) / 2;
+  const base = KB_STAGE_HEIGHT;
   const treadMat = new THREE.MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.7, metalness: 0.35 });
   const riserMat = new THREE.MeshStandardMaterial({ color: 0x15151a, roughness: 0.8 });
   for (let i = 0; i < steps; i++) {
-    const h = rise * (i + 1);
-    const z = startZ + tread * (i + 0.5);
-    addBox(stairs, width, 0.05, tread, treadMat, cx, h - 0.025, z);
-    addBox(stairs, width - 0.1, rise, 0.03, riserMat, cx, h - rise / 2, z - tread / 2 + 0.015, "", false);
+    const h = base + rise * (i + 1);
+    const x = startX - tread * (i + 0.5);
+    addBox(stairs, tread, 0.05, width, treadMat, x, h - 0.025, cz);
+    addBox(stairs, 0.03, rise, width - 0.1, riserMat, x + tread / 2 - 0.015, h - rise / 2, cz, "", false);
   }
   const run = tread * steps;
   const totalRise = rise * steps;
   const slopeLen = Math.hypot(run, totalRise);
   const slope = Math.atan2(totalRise, run);
-  for (const x of [minX + 0.03, maxX - 0.03]) {
-    const stringer = addBox(stairs, 0.06, 0.25, slopeLen, mats.steel, x, totalRise / 2 - 0.1, startZ + run / 2);
-    stringer.rotation.x = -slope;
+  const midX = startX - run / 2;
+  for (const z of [minZ + 0.03, maxZ - 0.03]) {
+    const stringer = addBox(stairs, slopeLen, 0.25, 0.06, mats.steel, midX, base + totalRise / 2 - 0.1, z);
+    stringer.rotation.z = -slope; // Rises toward -X
   }
-  for (const x of [minX - 0.03, maxX + 0.03]) {
-    for (let i = 0; i <= steps; i += 5) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.9, 6), mats.steel);
-      post.position.set(x, rise * i + 0.45, startZ + tread * i);
-      stairs.add(post);
-    }
-    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, slopeLen, 6), mats.steel);
-    rail.position.set(x, totalRise / 2 + 0.9, startZ + run / 2);
-    rail.rotation.x = Math.PI / 2 - slope;
-    stairs.add(rail);
+  // Handrail on the open (+Z) side only; the -Z side is the back wall
+  const railZ = maxZ + 0.03;
+  for (let i = 0; i <= steps; i += 5) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.9, 6), mats.steel);
+    post.position.set(startX - tread * i, base + rise * i + 0.45, railZ);
+    stairs.add(post);
   }
+  const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, slopeLen, 6), mats.steel);
+  rail.position.set(midX, base + totalRise / 2 + 0.9, railZ);
+  rail.rotation.z = Math.PI / 2 - slope; // Rises toward -X
+  stairs.add(rail);
   group.add(stairs);
 }
 
@@ -140,9 +167,11 @@ function buildUpperDeck(group: THREE.Group, mats: SharedMaterials): void {
     "deck-glass-room",
   );
 
-  // Two-rail steel balustrade across the stairwell edge
+  // Two-rail steel balustrade along the stairwell edge, open only where the top tread meets the deck
+  const topTreadMinX = KB_UPPER_STAIR.startX - KB_UPPER_STAIR.tread * KB_UPPER_STAIR.steps;
   const edges: Array<{ from: readonly [number, number]; to: readonly [number, number] }> = [
-    { from: [KB_UPPER_STAIR.maxX, KB_DECK_MIN_Z], to: [KB_PARTITION_X, KB_DECK_MIN_Z] },
+    { from: [KB_MIN_X, KB_DECK_MIN_Z], to: [topTreadMinX, KB_DECK_MIN_Z] },
+    { from: [topTreadMinX + KB_UPPER_STAIR.tread, KB_DECK_MIN_Z], to: [KB_PARTITION_X, KB_DECK_MIN_Z] },
   ];
   const transforms: InstanceTransform[] = [];
   for (const { from, to } of edges) {
@@ -164,13 +193,44 @@ function buildUpperDeck(group: THREE.Group, mats: SharedMaterials): void {
   rails.instanceMatrix.needsUpdate = true;
   rails.name = "deck-rail";
   deck.add(rails);
-
-  // Work light over the enclosed corridor deck
-  const light = new THREE.PointLight(0xfff1dc, 6, 7, 1.6);
-  light.position.set((KB_MIN_X + KB_PARTITION_X) / 2, KB_DECK_HEIGHT + 2.6, (KB_DECK_MIN_Z + KB_VESTIBULE.minZ) / 2);
-  light.name = "deck-light";
-  deck.add(light);
   group.add(deck);
+}
+
+/**
+ * Backstage work lighting: cool-white fluorescent battens on both floors that stay on permanently.
+ * Their emissive material and point lights are independent of the hall's house/show lights.
+ */
+function buildBackstageLights(group: THREE.Group, mats: SharedMaterials): void {
+  const lights = new THREE.Group();
+  lights.name = "backstage-lights";
+  const tubeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xf4f7ff, emissiveIntensity: 1.6, roughness: 0.4 });
+  const cx = (KB_MIN_X + KB_PARTITION_X) / 2;
+  const glassCx = (KB_VESTIBULE.minX + KB_VESTIBULE.maxX) / 2;
+  const glassCz = (KB_VESTIBULE.minZ + KB_VESTIBULE.maxZ) / 2;
+  const batten = (x: number, y: number, z: number, intensity: number, distance: number) => {
+    addBox(lights, 1.25, 0.07, 0.14, mats.matteBlack, x, y + 0.05, z, "batten", false);
+    addBox(lights, 1.2, 0.04, 0.06, tubeMat, x, y, z, "backstage-tube", false);
+    const light = new THREE.PointLight(0xf4f7ff, intensity, distance, 1.8);
+    light.position.set(x, y - 0.15, z);
+    light.name = "backstage-light";
+    lights.add(light);
+  };
+  // 1/F: under the deck soffit over the landing, the corridor and the vestibule
+  const soffitY = KB_DECK_HEIGHT - 0.2;
+  batten(cx, soffitY, (KB_LANDING.minZ + KB_LANDING.maxZ) / 2, 8, 6);
+  batten(cx, soffitY, -5.5, 8, 6);
+  batten(cx, soffitY, -1.5, 8, 6);
+  batten(glassCx, soffitY, glassCz, 10, 6);
+  // 2/F: hung from the slab over the deck corridor, and under the glass room roof
+  const deckY = KB_DECK_HEIGHT + 2.6;
+  for (const z of [-7.5, -3.0]) {
+    batten(cx, deckY, z, 8, 7);
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, KB_HALL_CEILING - deckY, 6), mats.steel);
+    rod.position.set(cx, (deckY + KB_HALL_CEILING) / 2, z);
+    lights.add(rod);
+  }
+  batten(glassCx, GLASS_ROOM_CEILING_Y - 0.12, glassCz, 12, 6);
+  group.add(lights);
 }
 
 /** Ground-floor entrance box under the glass room: acoustic-tiled faces, doorway opening into the hall (+X), chairs, outer door. */
@@ -206,16 +266,10 @@ function buildVestibule(group: THREE.Group, mats: SharedMaterials): void {
   addBox(doorway, 0.26, 0.08, doorW + 0.16, mats.frameBlack, 0, 2.24, 0, "", false);
   vestibule.add(doorway);
 
-  // Warm light inside so the doorway reads bright from the dark hall
-  const light = new THREE.PointLight(0xffe9c8, 12, 7, 1.6);
-  light.position.set((v.minX + v.maxX) / 2, 2.7, (v.minZ + v.maxZ) / 2);
-  light.name = "vestibule-light";
-  vestibule.add(light);
-
   // Stacked folding chairs along the -X wall
   const chairMat = new THREE.MeshStandardMaterial({ color: 0x2c2c31, roughness: 0.6, metalness: 0.4 });
   for (let i = 0; i < 4; i++) {
-    const chair = addBox(vestibule, 0.45, 0.9, 0.06, chairMat, -6.0 + i * 0.03, 0.5, 2.3 + i * 0.4, "folding-chair");
+    const chair = addBox(vestibule, 0.45, 0.9, 0.06, chairMat, v.minX + 0.5 + i * 0.03, 0.5, 2.3 + i * 0.4, "folding-chair");
     chair.rotation.x = 0.12;
   }
 
@@ -255,11 +309,6 @@ function buildGlassRoom(group: THREE.Group, mats: SharedMaterials): void {
   addBox(room, w + 0.15, 0.15, d + 0.15, mats.matteBlack, cx, GLASS_ROOM_CEILING_Y + 0.075, cz, "glass-room-roof");
 
   buildPlushieShelves(room, mats);
-
-  const light = new THREE.PointLight(0xfff1dc, 14, 6, 1.4);
-  light.position.set(cx, GLASS_ROOM_CEILING_Y - 0.2, cz);
-  light.name = "glass-room-light";
-  room.add(light);
   group.add(room);
 }
 
@@ -320,7 +369,7 @@ function buildPlushieShelves(room: THREE.Group, mats: SharedMaterials): void {
 function buildRoadCases(group: THREE.Group, mats: SharedMaterials): void {
   const caseMat = new THREE.MeshStandardMaterial({ color: 0x111114, roughness: 0.6, metalness: 0.3 });
   for (const [z0, z1] of [[-3.4, -2.6], [-1.6, -0.8]] as const) {
-    const roadCase = addBox(group, 0.5, 1.0, z1 - z0, caseMat, -6.25, 0.5, (z0 + z1) / 2, "road-case");
+    const roadCase = addBox(group, 0.5, 1.0, z1 - z0, caseMat, KB_MIN_X + 0.25, 0.5, (z0 + z1) / 2, "road-case");
     addBox(roadCase, 0.52, 0.04, z1 - z0 + 0.02, mats.steel, 0, 0.5, 0, "", false);
   }
 }

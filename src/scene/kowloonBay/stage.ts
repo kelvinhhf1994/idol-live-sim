@@ -38,7 +38,11 @@ export function buildStage(
   buildWalkwayStairs(group, mats, 1);
 }
 
-/** Two-tier aluminium truss with a diamond-plate top and five wedge monitors facing the stage. */
+/**
+ * Two tiers of box-section lighting truss (the kind normally hung from the ceiling) laid along the stage front,
+ * with a diamond-plate top and five wedge monitors facing the stage. Each tier is a full square section:
+ * four main chords, verticals and diagonals on the front and back faces, and ties across the top and bottom.
+ */
 function buildTrussWalkway(group: THREE.Group, mats: SharedMaterials, walkway: VenueDefinition["crowdBarrier"]): void {
   const truss = new THREE.Group();
   truss.name = "truss-walkway";
@@ -47,40 +51,53 @@ function buildTrussWalkway(group: THREE.Group, mats: SharedMaterials, walkway: V
   const cx = (walkway.minX + walkway.maxX) / 2;
   const cz = (walkway.minZ + walkway.maxZ) / 2;
   const top = walkway.maxY;
-  const zFaces = [walkway.minZ + 0.05, walkway.maxZ - 0.05];
+  const chordR = 0.03;
+  const braceR = 0.016;
+  const zFaces = [walkway.minZ + chordR + 0.02, walkway.maxZ - chordR - 0.02];
 
   const aluminium = new THREE.MeshStandardMaterial({ color: 0xc9ccd2, roughness: 0.35, metalness: 0.85 });
-  const transforms: InstanceTransform[] = [];
+  const chords: InstanceTransform[] = [];
+  const braces: InstanceTransform[] = [];
   const bays = Math.round(width / 0.5);
   const bay = width / bays;
-  for (const [lo, hi] of [[0.03, top / 2 - 0.03], [top / 2 + 0.03, top - 0.03]] as const) {
+  const tier = top / 2;
+  for (const [lo, hi] of [[chordR, tier - chordR], [tier + chordR, top - chordR]] as const) {
     const mid = (lo + hi) / 2;
     const rise = hi - lo;
     for (const z of zFaces) {
-      // Horizontal chords
-      for (const y of [lo, hi]) transforms.push([cx, y, z, 0, 0, Math.PI / 2, 1, width, 1]);
+      // Main chords running the full length
+      for (const y of [lo, hi]) chords.push([cx, y, z, 0, 0, Math.PI / 2, 1, width, 1]);
       for (let i = 0; i <= bays; i++) {
         const x = walkway.minX + i * bay;
         // Verticals
-        transforms.push([x, mid, z, 0, 0, 0, 1, rise, 1]);
+        braces.push([x, mid, z, 0, 0, 0, 1, rise, 1]);
         // Alternating diagonals
         if (i < bays) {
           const angle = Math.atan2(rise, bay) * (i % 2 === 0 ? 1 : -1);
-          transforms.push([x + bay / 2, mid, z, 0, 0, Math.PI / 2 - angle, 1, Math.hypot(bay, rise), 1]);
+          braces.push([x + bay / 2, mid, z, 0, 0, Math.PI / 2 - angle, 1, Math.hypot(bay, rise), 1]);
         }
       }
     }
-    // Ties between the front and back faces
+    // Ties across the section between the front and back faces, top and bottom
     for (let i = 0; i <= bays; i++) {
       const x = walkway.minX + i * bay;
-      for (const y of [lo, hi]) transforms.push([x, y, cz, Math.PI / 2, 0, 0, 1, depth - 0.1, 1]);
+      for (const y of [lo, hi]) braces.push([x, y, cz, Math.PI / 2, 0, 0, 1, zFaces[1]! - zFaces[0]!, 1]);
+    }
+    // End plates where the two tiers bolt together
+    for (const x of [walkway.minX, walkway.maxX]) {
+      addBox(truss, 0.04, rise + 2 * chordR, depth, aluminium, x, mid, cz, "", false);
     }
   }
-  const tubes = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.02, 0.02, 1, 6), aluminium, transforms.length);
-  transforms.forEach((t, i) => setInstanceTransform(tubes, i, t));
+  const tubes = new THREE.InstancedMesh(new THREE.CylinderGeometry(chordR, chordR, 1, 8), aluminium, chords.length);
+  chords.forEach((t, i) => setInstanceTransform(tubes, i, t));
   tubes.instanceMatrix.needsUpdate = true;
   tubes.castShadow = false;
   truss.add(tubes);
+  const bracing = new THREE.InstancedMesh(new THREE.CylinderGeometry(braceR, braceR, 1, 6), aluminium, braces.length);
+  braces.forEach((t, i) => setInstanceTransform(bracing, i, t));
+  bracing.instanceMatrix.needsUpdate = true;
+  bracing.castShadow = false;
+  truss.add(bracing);
 
   const plateMat = new THREE.MeshStandardMaterial({ color: 0x9a9da5, roughness: 0.45, metalness: 0.7 });
   addBox(truss, width, 0.03, depth, plateMat, cx, top - 0.015, cz, "walkway-plate");
@@ -101,30 +118,32 @@ function buildTrussWalkway(group: THREE.Group, mats: SharedMaterials, walkway: V
   group.add(truss);
 }
 
-/** Three treads at one end of the walkway, rising toward the stage, with an outer handrail. */
+/** Four treads at one end of the walkway, rising toward the stage, with an outer handrail. */
 function buildWalkwayStairs(group: THREE.Group, mats: SharedMaterials, side: -1 | 1): void {
   const stairs = new THREE.Group();
   stairs.name = side < 0 ? "walkway-stairs-left" : "walkway-stairs-right";
   const cx = side < 0 ? -3.95 : 3.95; // Tread span x ∈ [-4.4, -3.5] or [3.5, 4.4]
 
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     const h = 0.2 * (i + 1);
-    const z = KB_WALKWAY_FRONT_Z + 0.15 - 0.3 * i; // -7.25, -7.55, -7.85
+    const z = KB_WALKWAY_FRONT_Z + 0.45 - 0.3 * i; // -6.95, -7.25, -7.55, -7.85
     addBox(stairs, 0.9, h, 0.3, STEP_MAT, cx, h / 2, z);
     addBox(stairs, 0.9, 0.03, 0.05, STRIPE_MAT, cx, h + 0.015, z + 0.125, "", false);
   }
 
   const railX = cx + side * 0.47;
-  const bottomZ = KB_WALKWAY_FRONT_Z + 0.3;
+  const bottomZ = KB_WALKWAY_FRONT_Z + 0.6;
   const topZ = KB_STAGE_FRONT_Z;
-  for (const [z, h] of [[bottomZ, 0.9], [topZ, 1.5]] as const) {
+  const run = bottomZ - topZ;
+  const rise = 0.8;
+  for (const [z, h] of [[bottomZ, 0.9], [topZ, 0.9 + rise]] as const) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, h, 6), mats.steel);
     post.position.set(railX, h / 2, z);
     stairs.add(post);
   }
-  const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, Math.hypot(0.9, 0.6), 6), mats.steel);
-  rail.position.set(railX, 1.2, (bottomZ + topZ) / 2);
-  rail.rotation.x = -Math.atan2(0.9, 0.6); // Rises 0.6 over 0.9 toward -Z
+  const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, Math.hypot(run, rise), 6), mats.steel);
+  rail.position.set(railX, 0.9 + rise / 2, (bottomZ + topZ) / 2);
+  rail.rotation.x = -Math.atan2(run, rise); // Rises 0.8 over 1.2 toward -Z
   stairs.add(rail);
   group.add(stairs);
 }

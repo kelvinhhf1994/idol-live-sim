@@ -3,7 +3,7 @@ import {
   KB_BACK_WALL_Z,
   KB_HALL_CEILING,
   KB_MAX_X,
-  KB_MIN_X,
+  KB_PARTITION_X,
   KB_REAR_WALL_Z,
   type ElevatedPlatform,
 } from "../../config/venue";
@@ -43,9 +43,11 @@ export function buildRigging(
 /** Scaffold-pipe grid hung from the ceiling plus the lower fixture bar over the stage front. */
 function buildPipeGrid(group: THREE.Group, mats: SharedMaterials): void {
   const transforms: InstanceTransform[] = [];
-  const spanX = KB_MAX_X - KB_MIN_X - 0.4;
+  // The grid covers the hall only; the backstage block has its own lighting
+  const spanX = KB_MAX_X - KB_PARTITION_X - 0.4;
+  const gridCx = (KB_PARTITION_X + KB_MAX_X) / 2;
   const spanZ = KB_REAR_WALL_Z - KB_BACK_WALL_Z - 0.4;
-  for (const z of CROSS_PIPES_Z) transforms.push([0, PIPE_Y, z, 0, 0, Math.PI / 2, 1, spanX, 1]);
+  for (const z of CROSS_PIPES_Z) transforms.push([gridCx, PIPE_Y, z, 0, 0, Math.PI / 2, 1, spanX, 1]);
   for (const x of LONG_PIPES_X) transforms.push([x, PIPE_Y + 0.08, (KB_BACK_WALL_Z + KB_REAR_WALL_Z) / 2, Math.PI / 2, 0, 0, 1, spanZ, 1]);
   // Drop rods from the slab to every intersection
   const dropLen = KB_HALL_CEILING - PIPE_Y;

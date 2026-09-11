@@ -7,7 +7,7 @@ const SHOTS = [
   { name: "vestibule-doorway", place: [-4.6, 2.2, 0], view: [-Math.PI / 2, -0.02] },
   { name: "audience-facing-stage", place: [1.0, 1.0, 0], view: [0.0, -0.05] },
   // Stand at the +X end of the performer line so the idols do not block the lens
-  { name: "stage-facing-audience", place: [2.8, -9.6, 0.7], view: [Math.PI - 0.35, -0.04] },
+  { name: "stage-facing-audience", place: [2.8, -9.6, 1.0], view: [Math.PI - 0.35, -0.04] },
   { name: "right-side-wc-door", place: [0, -3.0, 0], view: [-Math.PI / 2, -0.02] },
   { name: "left-side-glass-room", place: [2.0, -6.0, 0], view: [Math.PI * 0.75, 0.12] },
   // Inside the backstage corridor looking stage-ward: 2/F stairs, stage stairs, road case

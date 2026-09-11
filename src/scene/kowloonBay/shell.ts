@@ -14,6 +14,7 @@ import { acousticTileTexture } from "./textures";
 const WALL_T = 0.3;
 const WIDTH = KB_MAX_X - KB_MIN_X;
 const DEPTH = KB_REAR_WALL_Z - KB_BACK_WALL_Z;
+const CENTER_X = (KB_MIN_X + KB_MAX_X) / 2;
 const CENTER_Z = (KB_BACK_WALL_Z + KB_REAR_WALL_Z) / 2;
 export const ACOUSTIC_TILE_TOP_Y = 3.2;
 
@@ -39,19 +40,19 @@ export function buildShell(group: THREE.Group, mats: SharedMaterials): void {
     new THREE.BoxGeometry(WIDTH, 0.1, DEPTH),
     new THREE.MeshStandardMaterial({ map: floorTexture, roughness: 0.55, metalness: 0.05 }),
   );
-  floor.position.set(0, -0.05, CENTER_Z);
+  floor.position.set(CENTER_X, -0.05, CENTER_Z);
   floor.receiveShadow = true;
   floor.name = "plank-floor";
   group.add(floor);
 
   // Exposed black ceiling far overhead
-  addBox(group, WIDTH + 2 * WALL_T, 0.2, DEPTH + 2 * WALL_T, mats.matteBlack, 0, KB_HALL_CEILING + 0.1, CENTER_Z, "ceiling", false);
+  addBox(group, WIDTH + 2 * WALL_T, 0.2, DEPTH + 2 * WALL_T, mats.matteBlack, CENTER_X, KB_HALL_CEILING + 0.1, CENTER_Z, "ceiling", false);
 
   // Structural walls
   addBox(group, WALL_T, KB_HALL_CEILING, DEPTH + 2 * WALL_T, mats.wallCharcoal, KB_MIN_X - WALL_T / 2, KB_HALL_CEILING / 2, CENTER_Z, "wall-left");
   addBox(group, WALL_T, KB_HALL_CEILING, DEPTH + 2 * WALL_T, mats.wallCharcoal, KB_MAX_X + WALL_T / 2, KB_HALL_CEILING / 2, CENTER_Z, "wall-right");
-  addBox(group, WIDTH, KB_HALL_CEILING, WALL_T, mats.wallCharcoal, 0, KB_HALL_CEILING / 2, KB_BACK_WALL_Z - WALL_T / 2, "wall-back");
-  addBox(group, WIDTH, KB_HALL_CEILING, WALL_T, mats.wallCharcoal, 0, KB_HALL_CEILING / 2, KB_REAR_WALL_Z + WALL_T / 2, "wall-rear");
+  addBox(group, WIDTH, KB_HALL_CEILING, WALL_T, mats.wallCharcoal, CENTER_X, KB_HALL_CEILING / 2, KB_BACK_WALL_Z - WALL_T / 2, "wall-back");
+  addBox(group, WIDTH, KB_HALL_CEILING, WALL_T, mats.wallCharcoal, CENTER_X, KB_HALL_CEILING / 2, KB_REAR_WALL_Z + WALL_T / 2, "wall-rear");
 
   // Black pleated curtains on the inner faces (PlaneGeometry faces +Z before rotation)
   const curtainMat = new THREE.MeshStandardMaterial({ map: pleatedCurtainTexture(), roughness: 0.95, side: THREE.DoubleSide });
@@ -62,12 +63,12 @@ export function buildShell(group: THREE.Group, mats: SharedMaterials): void {
     mesh.name = name;
     group.add(mesh);
   };
-  hang(WIDTH, KB_HALL_CEILING, 0, KB_HALL_CEILING / 2, KB_BACK_WALL_Z + 0.05, 0, "curtain-back");
+  hang(WIDTH, KB_HALL_CEILING, CENTER_X, KB_HALL_CEILING / 2, KB_BACK_WALL_Z + 0.05, 0, "curtain-back");
   const rightLen = KB_REAR_WALL_Z - KB_WC_BLOCK.maxZ;
   hang(rightLen, KB_HALL_CEILING, KB_MAX_X - 0.05, KB_HALL_CEILING / 2, KB_WC_BLOCK.maxZ + rightLen / 2, -Math.PI / 2, "curtain-right");
   hang(DEPTH, KB_HALL_CEILING, KB_MIN_X + 0.05, KB_HALL_CEILING / 2, CENTER_Z, Math.PI / 2, "curtain-left");
   const upper = KB_HALL_CEILING - ACOUSTIC_TILE_TOP_Y;
-  hang(WIDTH, upper, 0, ACOUSTIC_TILE_TOP_Y + upper / 2, KB_REAR_WALL_Z - 0.05, Math.PI, "curtain-rear");
+  hang(WIDTH, upper, CENTER_X, ACOUSTIC_TILE_TOP_Y + upper / 2, KB_REAR_WALL_Z - 0.05, Math.PI, "curtain-rear");
 
   // Grey acoustic foam tiles on the rear wall beside the vestibule
   const tileWidth = KB_MAX_X - KB_VESTIBULE.maxX;

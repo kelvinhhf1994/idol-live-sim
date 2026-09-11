@@ -231,58 +231,66 @@ export const NGAU_TAU_KOK_VENUE: VenueDefinition = {
 // Kowloon Bay (九龍灣): tall black-box hall with a two-storey backstage on the -X side.
 // Audience faces -Z; +X is the audience's right. See docs/superpowers/specs/2026-09-11-kowloon-bay-venue-design.md
 // ---------------------------------------------------------------------------
-export const KB_MIN_X = -6.5;
+export const KB_MIN_X = -8.5; // Outer wall of the 4 m backstage block, which sits outside the hall's -X edge
 export const KB_MAX_X = 6.5;
 export const KB_BACK_WALL_Z = -11.0; // Inner face of the back wall; the stage sits against it
 export const KB_REAR_WALL_Z = 4.0; // Inner face of the rear (audience) wall
 export const KB_HALL_CEILING = 7.6; // Very tall ceiling
-export const KB_STAGE_HEIGHT = 0.7;
+export const KB_STAGE_HEIGHT = 1.0; // About half a door tall
 export const KB_STAGE_FRONT_Z = -8.0;
-export const KB_WALKWAY_HEIGHT = 0.6; // Two-tier truss walkway in front of the stage
+export const KB_WALKWAY_HEIGHT = 0.8; // Two-tier lighting-truss walkway in front of the stage
 export const KB_WALKWAY_FRONT_Z = -7.4;
 export const KB_PARTITION_X = -4.5; // Curtain wall between the hall and the backstage corridor
 export const KB_BACKSTAGE_GAP = { minZ: -0.2, maxZ: 1.0 } as const; // Curtain gap into backstage, just stage-ward of the vestibule
 export const KB_DECK_HEIGHT = 3.0; // 2/F floor level
-export const KB_UPPER_STAIR = { minX: -6.5, maxX: -5.5, startZ: -10.2, tread: 0.28, rise: 0.2, steps: 15 } as const;
-export const KB_DECK_MIN_Z = KB_UPPER_STAIR.startZ + KB_UPPER_STAIR.tread * KB_UPPER_STAIR.steps; // -6.0
-export const KB_VESTIBULE = { minX: -6.5, maxX: -3.0, minZ: 1.2, maxZ: 4.0 } as const; // Entrance box; glass room sits on top
+// Stage-end landing at stage height: corridor floor -> lower stair -> landing -> stage wing, and the upper stair to 2/F
+export const KB_LANDING = { minX: KB_MIN_X, maxX: KB_PARTITION_X, minZ: KB_BACK_WALL_Z, maxZ: -9.0 } as const;
+export const KB_LOWER_STAIR = { minX: -6.4, maxX: -4.8, topZ: KB_LANDING.maxZ, tread: 0.3, rise: 0.2, steps: 5 } as const; // Rises toward -Z
+export const KB_UPPER_STAIR = { minZ: KB_BACK_WALL_Z, maxZ: -10.0, startX: -5.5, tread: 0.28, rise: 0.2, steps: 10 } as const; // Rises toward -X along the back wall
+export const KB_DECK_MIN_Z = KB_UPPER_STAIR.maxZ; // The deck starts where the stairwell ends
+export const KB_VESTIBULE = { minX: KB_MIN_X, maxX: -3.0, minZ: 1.2, maxZ: 4.0 } as const; // Entrance box; glass room sits on top
 export const KB_DOORWAY = { minZ: 1.6, maxZ: 2.8 } as const; // Vestibule doorway on its +X face, opening into the rear of the hall
 export const KB_WC_BLOCK = { minX: 4.5, maxX: 6.5, minZ: -11.0, maxZ: -7.6 } as const; // WC room beside the stage (+X)
 
 const kbStageBounds: Aabb2 = { minX: -4.5, maxX: 4.5, minZ: KB_BACK_WALL_Z, maxZ: KB_STAGE_FRONT_Z };
-// Capped at walkway height so a player on the 0.6 walkway can step up the last 0.1 onto the stage
+// Capped at walkway height so a player on the 0.8 walkway can step up the last 0.2 onto the stage
 const kbStageCollider: Aabb2 = { ...kbStageBounds, maxY: KB_WALKWAY_HEIGHT };
 const kbWalkwayBounds: Aabb2 = { minX: -3.5, maxX: 3.5, minZ: KB_STAGE_FRONT_Z, maxZ: KB_WALKWAY_FRONT_Z };
 const kbWalkway: Aabb2 & { maxY: number } = { ...kbWalkwayBounds, maxY: KB_WALKWAY_HEIGHT };
 
-// Three treads at each end of the walkway, rising toward the stage (-Z): 0.2 / 0.4 / 0.6
+// Four treads at each end of the walkway, rising toward the stage (-Z): 0.2 / 0.4 / 0.6 / 0.8, ending at the stage front
 const kbWalkwayStairs: ElevatedPlatform[] = [-1, 1].flatMap((side) =>
-  [0, 1, 2].map((i) => ({
+  [0, 1, 2, 3].map((i) => ({
     bounds: {
       minX: side < 0 ? -4.4 : 3.5,
       maxX: side < 0 ? -3.5 : 4.4,
-      minZ: KB_WALKWAY_FRONT_Z - 0.3 * i,
-      maxZ: KB_WALKWAY_FRONT_Z - 0.3 * i + 0.3,
+      minZ: KB_WALKWAY_FRONT_Z + 0.3 - 0.3 * i,
+      maxZ: KB_WALKWAY_FRONT_Z + 0.6 - 0.3 * i,
     },
     height: 0.2 * (i + 1),
   })),
 );
 
-// Backstage -> stage wing: four treads rising toward +X onto the 0.7 deck
-const kbStageStairs: ElevatedPlatform[] = [0, 1, 2, 3].map((i) => ({
-  bounds: { minX: -5.5 + 0.25 * i, maxX: -5.25 + 0.25 * i, minZ: -9.5, maxZ: -8.5 },
-  height: (KB_STAGE_HEIGHT / 4) * (i + 1),
+// Backstage corridor floor -> landing: five treads rising toward -Z
+const kbLowerStairs: ElevatedPlatform[] = Array.from({ length: KB_LOWER_STAIR.steps }, (_, i) => ({
+  bounds: {
+    minX: KB_LOWER_STAIR.minX,
+    maxX: KB_LOWER_STAIR.maxX,
+    minZ: KB_LOWER_STAIR.topZ + KB_LOWER_STAIR.tread * (KB_LOWER_STAIR.steps - 1 - i),
+    maxZ: KB_LOWER_STAIR.topZ + KB_LOWER_STAIR.tread * (KB_LOWER_STAIR.steps - i),
+  },
+  height: KB_LOWER_STAIR.rise * (i + 1),
 }));
 
-// Backstage -> 2/F: fifteen 0.2 m treads rising toward +Z, ending flush with the deck
+// Landing -> 2/F: ten 0.2 m treads rising toward -X along the back wall, ending flush with the deck
 const kbUpperStairs: ElevatedPlatform[] = Array.from({ length: KB_UPPER_STAIR.steps }, (_, i) => ({
   bounds: {
-    minX: KB_UPPER_STAIR.minX,
-    maxX: KB_UPPER_STAIR.maxX,
-    minZ: KB_UPPER_STAIR.startZ + KB_UPPER_STAIR.tread * i,
-    maxZ: KB_UPPER_STAIR.startZ + KB_UPPER_STAIR.tread * (i + 1),
+    minX: KB_UPPER_STAIR.startX - KB_UPPER_STAIR.tread * (i + 1),
+    maxX: KB_UPPER_STAIR.startX - KB_UPPER_STAIR.tread * i,
+    minZ: KB_UPPER_STAIR.minZ,
+    maxZ: KB_UPPER_STAIR.maxZ,
   },
-  height: KB_UPPER_STAIR.rise * (i + 1),
+  height: KB_STAGE_HEIGHT + KB_UPPER_STAIR.rise * (i + 1),
 }));
 
 export const KOWLOON_BAY_VENUE: VenueDefinition = {
@@ -302,6 +310,8 @@ export const KOWLOON_BAY_VENUE: VenueDefinition = {
     { ...KB_WC_BLOCK },
     kbStageCollider,
     kbWalkway,
+    // Stage wing: the landing opens onto the stage on 1/F, but the 2/F deck is walled off above it
+    { minX: KB_PARTITION_X - 0.1, maxX: KB_PARTITION_X + 0.1, minZ: KB_BACK_WALL_Z, maxZ: KB_STAGE_FRONT_Z, minY: KB_DECK_HEIGHT },
     // Backstage curtain partition, floor to ceiling, with the idol gap on 1/F only (the 2/F wall over the gap has minY)
     { minX: KB_PARTITION_X - 0.1, maxX: KB_PARTITION_X + 0.1, minZ: KB_STAGE_FRONT_Z, maxZ: KB_BACKSTAGE_GAP.minZ },
     { minX: KB_PARTITION_X - 0.1, maxX: KB_PARTITION_X + 0.1, minZ: KB_BACKSTAGE_GAP.minZ, maxZ: KB_BACKSTAGE_GAP.maxZ, minY: KB_DECK_HEIGHT },
@@ -314,10 +324,10 @@ export const KOWLOON_BAY_VENUE: VenueDefinition = {
     { minX: KB_VESTIBULE.maxX - 0.1, maxX: KB_VESTIBULE.maxX + 0.1, minZ: KB_VESTIBULE.minZ, maxZ: KB_DOORWAY.minZ },
     { minX: KB_VESTIBULE.maxX - 0.1, maxX: KB_VESTIBULE.maxX + 0.1, minZ: KB_DOORWAY.minZ, maxZ: KB_DOORWAY.maxZ, minY: KB_DECK_HEIGHT },
     { minX: KB_VESTIBULE.maxX - 0.1, maxX: KB_VESTIBULE.maxX + 0.1, minZ: KB_DOORWAY.maxZ, maxZ: KB_VESTIBULE.maxZ },
-    { minX: -6.4, maxX: -5.2, minZ: 2.0, maxZ: 3.8, maxY: 1.0 }, // Folding chairs stacked in the vestibule
+    { minX: KB_MIN_X + 0.1, maxX: KB_MIN_X + 1.3, minZ: 2.0, maxZ: 3.8, maxY: 1.0 }, // Folding chairs stacked in the vestibule
     // Backstage corridor road cases along the -X wall
-    { minX: -6.5, maxX: -6.0, minZ: -3.4, maxZ: -2.6, maxY: 1.1 },
-    { minX: -6.5, maxX: -6.0, minZ: -1.6, maxZ: -0.8, maxY: 1.1 },
+    { minX: KB_MIN_X, maxX: KB_MIN_X + 0.5, minZ: -3.4, maxZ: -2.6, maxY: 1.1 },
+    { minX: KB_MIN_X, maxX: KB_MIN_X + 0.5, minZ: -1.6, maxZ: -0.8, maxY: 1.1 },
     // +X side props
     { minX: 5.9, maxX: 6.4, minZ: -7.3, maxZ: -6.8, maxY: 1.0 }, // Bin beside the WC door
     { minX: 5.5, maxX: 6.3, minZ: -6.4, maxZ: -5.6, maxY: 1.6 }, // Black throne chair
@@ -334,7 +344,9 @@ export const KOWLOON_BAY_VENUE: VenueDefinition = {
     { bounds: kbStageBounds, height: KB_STAGE_HEIGHT },
     { bounds: kbWalkwayBounds, height: KB_WALKWAY_HEIGHT },
     ...kbWalkwayStairs,
-    ...kbStageStairs,
+    // Backstage: stage-height landing beside the stage wing, reached by the lower stair; the upper stair climbs from it
+    { bounds: { ...KB_LANDING }, height: KB_STAGE_HEIGHT },
+    ...kbLowerStairs,
     ...kbUpperStairs,
     // 2/F: corridor deck (stairwell left open at z < KB_DECK_MIN_Z) and the glass room over the vestibule
     { bounds: { minX: KB_MIN_X, maxX: KB_PARTITION_X, minZ: KB_DECK_MIN_Z, maxZ: KB_VESTIBULE.minZ }, height: KB_DECK_HEIGHT },

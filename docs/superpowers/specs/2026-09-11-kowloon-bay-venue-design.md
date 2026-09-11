@@ -31,26 +31,40 @@ when facing the audience); the WC door and fridge are on the +X side; the PA des
 
 ## Dimensions (metres)
 
-- Footprint: x ∈ [-6.5, 6.5], z ∈ [-11.0, 4.0]. Back wall inner face z = -11.0, rear wall z = 4.0.
+- Footprint: x ∈ [-8.5, 6.5], z ∈ [-11.0, 4.0]. Back wall inner face z = -11.0, rear wall z = 4.0. The hall
+  proper is x ∈ [-4.5, 6.5]; the 4 m backstage block (x ∈ [-8.5, -4.5]) sits outside it (revised
+  2026-09-11: the backstage was widened from 2 m to 4 m by pushing the outer wall out).
 - Ceiling 7.6 (牛頭角 is 6.2). Pipe grid 5.6–6.4. Fluorescent battens hang at 6.0.
-- Stage: x ∈ [-4.5, 4.5], z ∈ [-11.0, -8.0], height 0.7. Performer line y 0.7, z -9.5, spacing 0.78.
-- Truss walkway ("花道"): x ∈ [-3.5, 3.5], z ∈ [-8.0, -7.4], height 0.6, two truss tiers with diamond
-  plate top; 5 wedge monitors on top facing the stage. End stairs: x ∈ [-4.4, -3.5] and [3.5, 4.4],
-  three 0.3 m treads at 0.2 / 0.4 / 0.6 with handrails, clear of the partition (x = -4.5) and the WC
-  block (x = 4.5). Stepping from 0.6 onto the 0.7 stage is allowed. `crowdBarrier` is only consumed
+- Stage: x ∈ [-4.5, 4.5], z ∈ [-11.0, -8.0], height 1.0 (about half a door). Performer line y 1.0,
+  z -9.5, spacing 0.78.
+- Truss walkway ("花道"): x ∈ [-3.5, 3.5], z ∈ [-8.0, -7.4], height 0.8, built from two tiers of
+  box-section lighting truss (thick main chords, verticals, diagonals and cross ties, end plates) with a
+  diamond plate top; 5 wedge monitors on top facing the stage. End stairs: x ∈ [-4.4, -3.5] and
+  [3.5, 4.4], four 0.3 m treads at 0.2 / 0.4 / 0.6 / 0.8 (z from -6.8 to -8.0) with handrails, clear of
+  the partition (x = -4.5) and the WC block (x = 4.5). Stepping from 0.8 onto the 1.0 stage is allowed. `crowdBarrier` is only consumed
   by scene builders for rendering, so here it is the walkway footprint and `stage.ts` renders it.
 - WC block (+X, beside stage): x ∈ [4.5, 6.5], z ∈ [-11.0, -7.6]. Door on its +Z face at x ≈ 5.5 with
   EXIT sign and wall clock above; bin beside it.
 - Backstage partition (black curtain wall): x = -4.5, from z = -8.0 to z = 1.2, with a curtain gap at
-  z ∈ [-0.2, 1.0] (the backstage entrance, just stage-ward of the vestibule).
-- Backstage corridor: x ∈ [-6.5, -4.5], z ∈ [-11.0, 1.2].
-  - Stage stairs: x ∈ [-5.5, -4.5], z ∈ [-9.5, -8.5], four 0.25 m treads rising in +X at
-    0.175 / 0.35 / 0.525 / 0.7 onto the stage wing.
-  - 2/F stairs: x ∈ [-6.5, -5.5], 15 treads of 0.28 m, rising in +Z from z = -10.2 to z = -6.0,
-    heights 0.2, 0.4 … 3.0. Steel stringers and handrails. The stairwell above it is open (no deck).
-- 2/F deck, height 3.0: corridor deck x ∈ [-6.5, -4.5], z ∈ [-6.0, 1.2]; glass room deck
-  x ∈ [-6.5, -3.0], z ∈ [1.2, 4.0].
-- Entrance vestibule (ground floor under the glass room): x ∈ [-6.5, -3.0], z ∈ [1.2, 4.0]. Doorway
+  z ∈ [-0.2, 1.0] (the backstage entrance, just stage-ward of the vestibule). Over the stage wing
+  (z ∈ [-11.0, -8.0]) the curtain only hangs from deck level (3.0) up, backed by a `minY: 3.0`
+  collider, so 1/F walks from the landing onto the stage while the 2/F deck stays walled off.
+- Backstage corridor: x ∈ [-8.5, -4.5], z ∈ [-11.0, 1.2].
+  - Landing: x ∈ [-8.5, -4.5], z ∈ [-11.0, -9.0] at stage height 1.0; its +X edge is open onto the
+    stage wing (no step).
+  - Lower stairs: x ∈ [-6.4, -4.8], five 0.3 m treads rising in -Z from z = -7.5 to z = -9.0 at
+    0.2 / 0.4 / 0.6 / 0.8 / 1.0, handrails both sides.
+  - 2/F stairs: from the landing, z ∈ [-11.0, -10.0], ten 0.28 m treads rising in -X from x = -5.5
+    to x = -8.3, heights 1.2, 1.4 … 3.0. Steel stringers, handrail on the open (+Z) side. The
+    stairwell above it is open (no deck); the deck rail leaves only the top tread open.
+  - Road cases along the -X wall (x ∈ [-8.5, -8.0]).
+  - Work lighting: cool-white fluorescent battens with point lights on both floors (under the deck
+    soffit over the landing, corridor and vestibule; hung over the deck corridor; under the glass
+    room roof). Their emissive material and lights are permanently on and independent of the hall's
+    house/show lights.
+- 2/F deck, height 3.0: corridor deck x ∈ [-8.5, -4.5], z ∈ [-10.0, 1.2]; glass room deck
+  x ∈ [-8.5, -3.0], z ∈ [1.2, 4.0].
+- Entrance vestibule (ground floor under the glass room): x ∈ [-8.5, -3.0], z ∈ [1.2, 4.0]. Doorway
   1.2 m wide on its +X face at z ∈ [1.6, 2.8], opening into the rear of the hall toward the PA desk
   (revised 2026-09-11 from the -Z face after the first visual review). The -Z face is solid tiles.
   Closed outer door with 入口 sign on the +Z wall. Folding chairs inside. Player spawn (-4.6, 0, 2.2),
@@ -58,10 +72,11 @@ when facing the audience); the WC door and fridge are on the +X side; the PA des
 - Glass room (2/F over the vestibule): floor-to-ceiling glazing (落地玻璃) on the -Z face over the hall
   side (x ∈ [-4.5, -3.0], facing the stage) and on the +X face (facing the hall); the -Z side over
   the backstage corridor is open so the corridor deck walks straight in; thin dark frames; room
-  ceiling at 5.8. Shelves inside lined with instanced colourful plushie boxes; warm interior light.
+  ceiling at 5.8. Shelves inside lined with instanced colourful plushie boxes; white work light (see backstage lighting).
 - The partition curtain at x = -4.5 runs floor to ceiling, so the 2/F corridor deck is walled off from
   the hall (no balustrade, no jumping down); only the stairwell edge has a rail.
-- Audience floor: x ∈ [-4.5, 6.5], z ∈ [-7.4, 4.0] minus the vestibule.
+- Audience floor: x ∈ [-4.5, 6.5], z ∈ [-7.4, 4.0] minus the vestibule. The rigging pipe grid covers
+  the hall only (x ∈ [-4.5, 6.5]).
 
 ## Multi-level ground (engine change)
 
@@ -91,7 +106,7 @@ Jumping under the deck never reaches `3.0 - 0.22`, so a ground player cannot pop
   footprint, spawn in the vestibule, colliders for walls / WC block / partition (with the gap) /
   vestibule walls (doorway gap) / truss walkway / stage / fridge / PA desk + barrier / throne / ladder /
   tables, platforms for stage, truss walkway, both stair runs, 2/F deck and glass room deck,
-  `crowdBarrier` = the truss walkway footprint with `maxY: 0.6` (also listed in `colliders` so a
+  `crowdBarrier` = the truss walkway footprint with `maxY: 0.8` (also listed in `colliders` so a
   ground player cannot clip into the truss), 15 audience points on the floor,
   light colours, `youtubeVideoId` same as 牛頭角.
 
@@ -107,8 +122,9 @@ New folder `src/scene/kowloonBay/` so the builder does not become another 2300-l
   wedge monitors, end stairs with handrails.
 - `rigging.ts` – pipe grid, fluorescent battens (house lights), moving heads with fake beam cones,
   PAR cans, hung line arrays.
-- `backstage.ts` – partition curtains with gap, corridor, stage stairs, 2/F stairs with stringers and
-  handrails, corridor deck with stairwell rail, glass room (frames, glass, shelves, plushie boxes, light).
+- `backstage.ts` – partition curtains with gap, landing, lower stairs, 2/F stairs with stringers and
+  handrails, corridor deck with stairwell rail, glass room (frames, glass, shelves, plushie boxes),
+  always-on backstage work lights.
 - `props.ts` – WC door with EXIT sign and clock, bin, throne chair, ladder with plushie net, fridge,
   PA desk with mixer and monitors, barrier boards, posters, long white folding table, folding chairs in
   the vestibule.

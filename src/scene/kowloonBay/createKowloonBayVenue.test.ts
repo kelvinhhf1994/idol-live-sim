@@ -46,13 +46,14 @@ describe("createVenue for Kowloon Bay", () => {
     expect(KB_HALL_CEILING).toBeGreaterThan(KB_DECK_HEIGHT + 3);
   });
 
-  it("builds the two-storey backstage: partition, both stairs, deck, vestibule and glass room", () => {
+  it("builds the two-storey backstage: partition, landing, both stairs, deck, vestibule, glass room and its own lights", () => {
     const build = createVenue(KOWLOON_BAY_VENUE);
     const names = collectNames(build.group);
     for (const expected of [
       "backstage-partition",
       "backstage-gap-valance",
-      "stage-stairs",
+      "backstage-landing",
+      "lower-stairs",
       "upper-stairs",
       "upper-deck",
       "deck-corridor",
@@ -60,7 +61,9 @@ describe("createVenue for Kowloon Bay", () => {
       "deck-rail",
       "entrance-vestibule",
       "entrance-doorway",
-      "vestibule-light",
+      "backstage-lights",
+      "backstage-tube",
+      "backstage-light",
       "glass-room",
       "glass-pane",
       "glass-room-roof",
@@ -83,6 +86,27 @@ describe("createVenue for Kowloon Bay", () => {
       c.name === "glass-room" ? c.children.filter((p) => p.name === "glass-pane") : [],
     );
     expect(panes.length).toBe(4);
+  });
+
+  it("keeps the backstage work lights on independently of the house-light tubes", () => {
+    const build = createVenue(KOWLOON_BAY_VENUE);
+    const tubes: THREE.Mesh[] = [];
+    build.group.traverse((o) => {
+      if (o.name === "backstage-tube" && o instanceof THREE.Mesh) tubes.push(o);
+    });
+    expect(tubes.length).toBeGreaterThanOrEqual(6);
+    const houseTube = build.group.getObjectByName("fluorescent-tube") as THREE.Mesh;
+    for (const tube of tubes) {
+      const mat = tube.material as THREE.MeshStandardMaterial;
+      expect(mat).not.toBe(houseTube.material);
+      expect(mat.emissiveIntensity).toBeGreaterThan(1);
+    }
+    const lights: THREE.PointLight[] = [];
+    build.group.traverse((o) => {
+      if (o.name === "backstage-light" && o instanceof THREE.PointLight) lights.push(o);
+    });
+    expect(lights.some((l) => l.position.y < KB_DECK_HEIGHT)).toBe(true);
+    expect(lights.some((l) => l.position.y > KB_DECK_HEIGHT)).toBe(true);
   });
 
   it("rigs the tall ceiling with pipes, fluorescents, moving heads, PARs and line arrays", () => {
