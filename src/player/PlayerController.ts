@@ -6,9 +6,12 @@ import {
 } from "../animation/personPose";
 import type { VenueDefinition } from "../config/venue";
 import { moveCircleWithCollisions, type Aabb2 } from "../core/collision";
-import { groundHeightAt } from "../core/venueGround";
+import { groundHeightAt, isOnSeat, seatFacingAt } from "../core/venueGround";
 import type { PersonRig } from "../scene/createCharacter";
+import { createSheepMount, type SheepMount } from "../scene/createSheepMount";
 import { LiftController } from "./LiftController";
+import { applySheepGallop, SheepRideAction, writeRidePose } from "./SheepRideAction";
+import { writeSitPose } from "./SitPose";
 import {
   createJumpPointPose,
   JumpPointAction,
@@ -129,6 +132,8 @@ export class PlayerController {
   private penlightState: PenlightState = { ...DEFAULT_PENLIGHT_STATE };
   private wiperPhase = 0;
   private readonly beat = new BeatAction();
+  private readonly ride = new SheepRideAction();
+  private readonly mount: SheepMount = createSheepMount();
 
   constructor(
     private readonly rig: PersonRig,
@@ -136,6 +141,8 @@ export class PlayerController {
     private colliders: readonly Aabb2[],
   ) {
     this.group = rig.group;
+    this.mount.group.visible = false;
+    this.group.add(this.mount.group);
     this.lift = new LiftController(venue.spawn.y, rig);
     this.position.set(venue.spawn.x, venue.spawn.y, venue.spawn.z);
     this.yaw = venue.spawn.yaw;
@@ -149,6 +156,12 @@ export class PlayerController {
   }
 
   teleportTo(x: number, y: number, z: number, yaw: number): void {
+    this.setRideActive(false);
+    this.setLiftActive(false);
+    this.mosh.cancel();
+    this.twoStep.release();
+    this.jumpPoint.cancel();
+    this.cancelBeat();
     this.position.set(x, y, z);
     this.yaw = yaw;
     this.verticalVelocity = 0;
@@ -169,10 +182,12 @@ export class PlayerController {
       this.audienceImpact.movementX = movement.x;
       this.audienceImpact.movementZ = movement.z;
       const formationActive = this.lift.isSupporting;
-      const collisionRadius = formationActive ? 0.92 : 0.34;
-      const boundaryPadding = formationActive ? 0.92 : 0.35;
-      const speedMultiplier =
-        this.twoStepAnimating
+      const riding = this.ride.isActive;
+      const collisionRadius = formationActive ? 0.92 : riding ? 0.45 : 0.34;
+      const boundaryPadding = formationActive ? 0.92 : riding ? 0.45 : 0.35;
+      const speedMultiplier = riding
+        ? this.settings.liftSpeed
+        : this.twoStepAnimating
         ? getTwoStepMovementScale(this.twoStep.progress) * this.settings.twoStepSpeed
         : this.twoStep.isActive || this.jumpPoint.isActive || this.jumpPoint.held
           ? this.settings.walkSpeed
@@ -255,6 +270,10 @@ export class PlayerController {
     if (this.twoStepAnimating) this.twoStep.update(dt);
     this.beat.update(dt, this.settings.beatSpeed);
     this.syncBeatPenlightPose();
+    if (this.ride.isActive) {
+      this.ride.update(dt, isMoving);
+      applySheepGallop(this.ride.phase, this.ride.gait, this.mount);
+    }
     this.animate(isMoving, dt);
     if (this.lift.isSupporting) this.lift.applyPlayerPose();
     this.syncTransform();
@@ -387,6 +406,7 @@ export class PlayerController {
 
   private get penlightSuppressed(): boolean {
     return (
+      this.ride.isActive ||
       this.mosh.isActive ||
       this.twoStep.isActive ||
       this.lift.isSupporting ||
@@ -437,6 +457,7 @@ export class PlayerController {
 
   setLiftActive(active: boolean): void {
     if (active) {
+      this.setRideActive(false);
       this.mosh.cancel();
       this.twoStep.release();
       this.jumpPoint.cancel();
@@ -447,7 +468,30 @@ export class PlayerController {
     this.lift.setActive(active);
   }
 
+  get rideActive(): boolean {
+    return this.ride.isActive;
+  }
+
+  /** FT Special: mount or dismount the plush sheep. Mounting cancels every other pit action. */
+  setRideActive(active: boolean): void {
+    if (active === this.ride.isActive) return;
+    if (active) {
+      this.mosh.cancel();
+      this.twoStep.release();
+      this.jumpPoint.cancel();
+      this.cancelBeat();
+      if (this.lift.isActive) this.lift.setActive(false);
+      this.ride.start();
+      this.mount.group.visible = true;
+      return;
+    }
+    this.ride.stop();
+    applySheepGallop(0, 0, this.mount);
+    this.mount.group.visible = false;
+  }
+
   startMosh(): void {
+    this.setRideActive(false);
     this.twoStep.release();
     this.jumpPoint.cancel();
     this.cancelBeat();
@@ -460,6 +504,7 @@ export class PlayerController {
   }
 
   startTwoStep(): void {
+    this.setRideActive(false);
     this.mosh.cancel();
     this.jumpPoint.cancel();
     this.cancelBeat();
@@ -472,6 +517,7 @@ export class PlayerController {
   }
 
   startJumpPoint(): boolean {
+    this.setRideActive(false);
     this.mosh.cancel();
     this.twoStep.release();
     this.cancelBeat();
@@ -537,6 +583,11 @@ export class PlayerController {
       return;
     }
     this.clearV2TwoStepChannels(blend);
+    // Riding wins over every other pose, including airborne, so jumps carry the seat along.
+    if (this.ride.isActive) {
+      this.applyRidePose(blend);
+      return;
+    }
     if (jumpPointPoseActive) {
       this.applyJumpPointPose(blend);
       return;
@@ -551,6 +602,12 @@ export class PlayerController {
       return;
     }
     if (!moshActive && !jumpPointPoseActive && this.grounded) {
+      if (!isMoving && isOnSeat(this.venue, this.position.x, this.position.z, this.position.y)) {
+        const facing = seatFacingAt(this.venue, this.position.x, this.position.z, this.position.y);
+        if (facing !== undefined) this.yaw = dampAngle(this.yaw, facing, 1 - Math.exp(-dt * 10));
+        this.applySitPose(blend);
+        return;
+      }
       this.applyWalkPose(walkSwing, isMoving, blend);
       return;
     }
@@ -663,6 +720,21 @@ export class PlayerController {
       target.leftElbow = 0.18 + Math.max(0, -phase) * 0.16;
       target.rightElbow = 0.18 + Math.max(0, phase) * 0.16;
     }
+    this.overlayPenlightArm(target);
+    applyPersonPose(this.rig, target, blend);
+  }
+
+  private applyRidePose(blend: number): void {
+    const target = this.personPose;
+    resetPersonPose(target);
+    writeRidePose(this.ride.phase, this.ride.gait, target);
+    applyPersonPose(this.rig, target, blend);
+  }
+
+  private applySitPose(blend: number): void {
+    const target = this.personPose;
+    resetPersonPose(target);
+    writeSitPose(target);
     this.overlayPenlightArm(target);
     applyPersonPose(this.rig, target, blend);
   }

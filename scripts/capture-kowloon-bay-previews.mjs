@@ -7,12 +7,15 @@ const SHOTS = [
   { name: "vestibule-doorway", place: [-4.6, 2.2, 0], view: [-Math.PI / 2, -0.02] },
   { name: "audience-facing-stage", place: [1.0, 1.0, 0], view: [0.0, -0.05] },
   // Stand at the +X end of the performer line so the idols do not block the lens
-  { name: "stage-facing-audience", place: [2.8, -9.6, 1.0], view: [Math.PI - 0.35, -0.04] },
+  { name: "stage-facing-audience", place: [2.8, -9.6, 1.5], view: [Math.PI - 0.35, -0.04] },
   { name: "right-side-wc-door", place: [0, -3.0, 0], view: [-Math.PI / 2, -0.02] },
   { name: "left-side-glass-room", place: [2.0, -6.0, 0], view: [Math.PI * 0.75, 0.12] },
   // Inside the backstage corridor looking stage-ward: 2/F stairs, stage stairs, road case
   { name: "backstage-corridor", place: [-5.5, -1.0, 0], view: [0.0, 0.05] },
-  { name: "glass-room-view", place: [-4.75, 2.6, 3.0], view: [-0.37, -0.15] },
+  { name: "glass-room-view", place: [-4.75, 2.6, 3.5], view: [-0.37, -0.15] },
+  // 2/F arcade row: packed cabinets, drink fridge and snack rack along the -X wall
+  { name: "arcade-row", place: [-6.2, -6.4, 3.5], view: [Math.PI * 0.62, -0.08] },
+  { name: "arcade-fridge-snacks", place: [-6.15, -4.7, 3.5], view: [Math.PI * 0.55, 0.02] },
 ];
 
 async function run() {

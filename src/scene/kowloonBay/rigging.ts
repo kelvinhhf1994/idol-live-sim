@@ -7,6 +7,7 @@ import {
   KB_REAR_WALL_Z,
   type ElevatedPlatform,
 } from "../../config/venue";
+import type { LightShow } from "../createVenue";
 import {
   addBox,
   addMovingHead,
@@ -16,8 +17,17 @@ import {
   speakerGrilleTexture,
   type FakeBeam,
   type InstanceTransform,
+  type ParCanHandle,
   type SharedMaterials,
 } from "../venueKit";
+import {
+  CROWD_SWEEP,
+  STAGE_SWEEP,
+  createKowloonBayLightShow,
+  type AnimatedHead,
+  type AnimatedSpot,
+  type Sweep,
+} from "./lightShow";
 
 export const PIPE_Y = 6.2;
 export const STAGE_BAR_Y = 5.4;
@@ -26,18 +36,27 @@ const CROSS_PIPES_Z = [-9.0, -6.0, -2.0, 2.0] as const;
 const LONG_PIPES_X = [-4.0, 0, 4.0] as const;
 const TUBE_XS = [-3.5, 3.5] as const;
 const TUBE_ZS = [-9.2, -5.6, -2.0, 1.6] as const;
+// Key spots sit further out on the bar than the heads, so a tighter x sweep keeps them on the stage
+const KEY_SPOT_SWEEP: Sweep = { ampX: 1.4, ampZ: 0.8, speed: 1.05 };
+
+/** Fixture models plus the live handles the light show drives. */
+export interface RigParts {
+  tubeMaterial: THREE.MeshStandardMaterial;
+  heads: AnimatedHead[];
+  pars: ParCanHandle[];
+}
 
 export function buildRigging(
   group: THREE.Group,
   mats: SharedMaterials,
   colors: readonly number[],
   fakeBeams: FakeBeam[],
-): THREE.MeshStandardMaterial {
+): RigParts {
   buildPipeGrid(group, mats);
   const tubeMaterial = buildFluorescents(group, mats);
-  buildFixtures(group, mats, colors, fakeBeams);
+  const { heads, pars } = buildFixtures(group, mats, colors, fakeBeams);
   buildLineArrays(group, mats);
-  return tubeMaterial;
+  return { tubeMaterial, heads, pars };
 }
 
 /** Scaffold-pipe grid hung from the ceiling plus the lower fixture bar over the stage front. */
@@ -96,59 +115,80 @@ function buildFluorescents(group: THREE.Group, mats: SharedMaterials): THREE.Mes
 }
 
 /** Moving heads on the stage bar and the mid-hall pipe, PAR cans on the z = -6 pipe. */
-function buildFixtures(group: THREE.Group, mats: SharedMaterials, colors: readonly number[], fakeBeams: FakeBeam[]): void {
+function buildFixtures(
+  group: THREE.Group,
+  mats: SharedMaterials,
+  colors: readonly number[],
+  fakeBeams: FakeBeam[],
+): Pick<RigParts, "heads" | "pars"> {
   const color = (i: number) => colors[i % colors.length] ?? 0xffffff;
+  const heads: AnimatedHead[] = [];
+  const addHead = (from: THREE.Vector3, to: THREE.Vector3, hex: number, radius: number, sweep: Sweep, phase: number, colorOffset: number) => {
+    const handle = addMovingHead(group, from, to, hex, mats);
+    const beam: FakeBeam = { from, to, color: hex, radius };
+    heads.push({ handle, beam, beamIndex: fakeBeams.length, homeTo: to.clone(), sweep, phase, colorOffset });
+    fakeBeams.push(beam);
+  };
   [-3.6, -1.8, 0, 1.8, 3.6].forEach((x, i) => {
     const from = new THREE.Vector3(x, STAGE_BAR_Y - 0.5, STAGE_BAR_Z);
     const to = new THREE.Vector3(x * 0.8, 0.8, -9.5);
-    addMovingHead(group, from, to, color(i), mats);
-    fakeBeams.push({ from, to, color: color(i), radius: 0.45 });
+    addHead(from, to, color(i), 0.45, STAGE_SWEEP, i * 1.1, i);
   });
   [-4.0, -2.0, 0, 2.0, 4.0].forEach((x, i) => {
     const from = new THREE.Vector3(x, PIPE_Y - 0.5, CROSS_PIPES_Z[2]);
     const to = new THREE.Vector3(-x * 0.5, 0.5, -5.0);
-    addMovingHead(group, from, to, color(i + 2), mats);
-    fakeBeams.push({ from, to, color: color(i + 2), radius: 0.6 });
+    addHead(from, to, color(i + 2), 0.6, CROWD_SWEEP, i * 0.9 + 0.5, i + 2);
   });
-  [-3.75, -2.25, -0.75, 0.75, 2.25, 3.75].forEach((x, i) => {
-    addParCan(group, new THREE.Vector3(x, PIPE_Y - 0.15, CROSS_PIPES_Z[1]), new THREE.Vector3(x, 0.8, -9.0), color(i + 1), mats);
-  });
+  const pars = [-3.75, -2.25, -0.75, 0.75, 2.25, 3.75].map((x, i) =>
+    addParCan(group, new THREE.Vector3(x, PIPE_Y - 0.15, CROSS_PIPES_Z[1]), new THREE.Vector3(x, 0.8, -9.0), color(i + 1), mats),
+  );
+  return { heads, pars };
 }
 
-/** Four-box line arrays flown either side of the stage front. */
+/** Four-box line array flown on the hall +X side. The -X hang sat inside the 2/F backstage and was removed. */
 function buildLineArrays(group: THREE.Group, mats: SharedMaterials): void {
   const grilleMat = new THREE.MeshStandardMaterial({ map: speakerGrilleTexture(), roughness: 0.8 });
-  for (const side of [-1, 1] as const) {
-    const array = new THREE.Group();
-    array.name = "line-array";
-    array.position.set(side * 5.6, 0, -7.2);
-    addBox(array, 0.7, 0.08, 0.6, mats.steel, 0, 6.15, 0, "", false);
-    for (let i = 0; i < 4; i++) {
-      const y = 5.9 - i * 0.42;
-      const cabinet = addBox(array, 0.6, 0.38, 0.5, mats.fixtureBlack, 0, y, 0);
-      cabinet.rotation.x = -0.06 * i; // Lower boxes aim further down toward the crowd
-      const grille = new THREE.Mesh(new THREE.PlaneGeometry(0.54, 0.32), grilleMat);
-      grille.position.set(0, 0, 0.251);
-      cabinet.add(grille);
-    }
-    group.add(array);
+  const array = new THREE.Group();
+  array.name = "line-array";
+  array.position.set(5.6, 0, -7.2);
+  addBox(array, 0.7, 0.08, 0.6, mats.steel, 0, 6.15, 0, "", false);
+  for (let i = 0; i < 4; i++) {
+    const y = 5.9 - i * 0.42;
+    const cabinet = addBox(array, 0.6, 0.38, 0.5, mats.fixtureBlack, 0, y, 0);
+    cabinet.rotation.x = -0.06 * i; // Lower boxes aim further down toward the crowd
+    const grille = new THREE.Mesh(new THREE.PlaneGeometry(0.54, 0.32), grilleMat);
+    grille.position.set(0, 0, 0.251);
+    cabinet.add(grille);
   }
+  group.add(array);
 }
 
-/** Show lighting: base fill, crowd wash, four ShowController key spots, two back lights and volumetric beam cones. */
+/**
+ * Show lighting: base fill, crowd wash, four ShowController key spots, two back lights and volumetric beam cones.
+ * Also assembles the light show that sweeps and recolours the spots and the rig's fixtures.
+ */
 export function createShowLights(
   group: THREE.Group,
   colors: readonly number[],
   stage: ElevatedPlatform,
   fakeBeams: readonly FakeBeam[],
   showOnly: THREE.Object3D[],
-): THREE.SpotLight[] {
+  rig: Pick<RigParts, "heads" | "pars">,
+): { stageLights: THREE.SpotLight[]; lightShow: LightShow } {
   group.add(new THREE.HemisphereLight(0x2a2450, 0x050409, 0.7));
   const crowdWash = new THREE.PointLight(0x2a3cff, 26, 13, 1.5);
   crowdWash.position.set(1.0, 4.5, -2.0);
   group.add(crowdWash);
 
   const centerZ = (stage.bounds.minZ + stage.bounds.maxZ) / 2;
+  // Soft neutral face fill from the mid-hall pipe so the idols stay readable between sweeping beams.
+  // Narrow cone (~16 deg) covers just the performer line so it never pools on the stage floor or LED wall.
+  const faceFill = new THREE.SpotLight(0xffe6d6, 4, 24, 0.28, 1.0, 1.0);
+  faceFill.name = "face-fill";
+  faceFill.position.set(0, PIPE_Y - 0.3, CROSS_PIPES_Z[2]);
+  faceFill.target.position.set(0, stage.height + 1.1, centerZ);
+  faceFill.castShadow = false;
+  group.add(faceFill, faceFill.target);
   const lights = colors.map((color, idx) => {
     const light = new THREE.SpotLight(color, 55, 20, 0.42, 0.6, 1.2);
     light.position.set(-3.6 + idx * 2.4, STAGE_BAR_Y - 0.2, STAGE_BAR_Z);
@@ -158,22 +198,31 @@ export function createShowLights(
     return light;
   });
 
-  const backBlue = new THREE.SpotLight(0x3f6cff, 70, 24, 0.55, 0.7, 1.1);
+  // Back lights rake the crowd floor from 12 m away, so keep them narrow and modest or they pool into one big wash
+  const backBlue = new THREE.SpotLight(0x3f6cff, 20, 24, 0.34, 0.8, 1.1);
   backBlue.position.set(-2.8, PIPE_Y - 0.3, CROSS_PIPES_Z[0]);
   backBlue.target.position.set(2.0, 0, 2.0);
-  const backPurple = new THREE.SpotLight(0x8a3cff, 70, 24, 0.55, 0.7, 1.1);
+  const backPurple = new THREE.SpotLight(0x8a3cff, 20, 24, 0.34, 0.8, 1.1);
   backPurple.position.set(2.8, PIPE_Y - 0.3, CROSS_PIPES_Z[0]);
   backPurple.target.position.set(-2.0, 0, 2.0);
   group.add(backBlue, backBlue.target, backPurple, backPurple.target);
 
-  const beams: FakeBeam[] = [
-    ...lights.map((l) => ({ from: l.position.clone(), to: l.target.position.clone(), color: l.color.getHex(), radius: 0.9 })),
-    { from: backBlue.position.clone(), to: backBlue.target.position.clone(), color: 0x3f6cff, radius: 1.3 },
-    { from: backPurple.position.clone(), to: backPurple.target.position.clone(), color: 0x8a3cff, radius: 1.3 },
-    ...fakeBeams,
-  ];
+  // Fixture beams keep the indices buildFixtures recorded; spot beams are appended after them
+  const beams: FakeBeam[] = [...fakeBeams];
+  const spots: AnimatedSpot[] = [];
+  const addSpot = (light: THREE.SpotLight, radius: number, sweep: Sweep, phase: number, colorOffset: number) => {
+    const beam: FakeBeam = { from: light.position.clone(), to: light.target.position.clone(), color: light.color.getHex(), radius };
+    spots.push({ light, beam, beamIndex: beams.length, homeTo: light.target.position.clone(), sweep, phase, colorOffset });
+    beams.push(beam);
+  };
+  lights.forEach((light, idx) => addSpot(light, 0.9, KEY_SPOT_SWEEP, idx * 1.4 + 0.7, idx));
+  // Adjacent palette offsets: complementary pairs (blue + amber) overlap on the floor and mix to white
+  addSpot(backBlue, 1.3, CROWD_SWEEP, 2.1, 1);
+  addSpot(backPurple, 1.3, CROWD_SWEEP, 4.0, 2);
+
   const beamMesh = createBeamCones(beams);
   group.add(beamMesh);
   showOnly.push(beamMesh);
-  return lights;
+  const lightShow = createKowloonBayLightShow({ heads: rig.heads, spots, pars: rig.pars, beams: beamMesh, palette: colors });
+  return { stageLights: lights, lightShow };
 }

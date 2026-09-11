@@ -18,14 +18,16 @@ move at lift speed. The sheep is built entirely from rounded primitives (spheres
 
 ## Sheep model (`src/scene/createSheepMount.ts`)
 
-Dimensions follow the product photo (83 cm long, 30 cm wide, 50 cm seat height, ~78 cm to ear tip).
-Sheep faces -Z like the hero. Parts, all `SphereGeometry` / `CapsuleGeometry`:
+Dimensions follow the product photo for length and seat (83 cm long, 50 cm seat height, ~78 cm to
+ear tip) but the body is widened 2× (≈60 cm) and the head 1.5× for a chubbier plush look, per user
+feedback. Sheep faces -Z like the hero. Parts, all `SphereGeometry` / `CapsuleGeometry`:
 
 - Rump: large ellipsoid at the rear, slightly flattened; the seat.
 - Body: horizontal capsule from rump to shoulders; back is flat enough to sit on.
 - Legs: four vertical capsules. Front pair thicker and taller, rear pair short and stout.
-- Neck: capsule angled forward-up from the shoulders.
-- Head: elongated ellipsoid tilted forward-down (long muzzle).
+- Neck: short thick capsule, mostly buried between shoulders and head.
+- Head: one chunky loaf-shaped capsule tilted forward-down, scaled uniformly 1.5×; the nose
+  therefore reaches past the 0.83 m sheet length.
 - Ears: two short capsules standing up on the crown.
 - No eyes or mouth (the stool has none). Colour `#f4eee4`, `roughness 1`. Each mesh gets an
   inverted-hull outline for consistency with the hero.
@@ -53,8 +55,9 @@ ride action can animate the gallop.
 
 ## App wiring
 
-- `App` owns the button; `handleRideToggle` flips `player.rideActive`, updates `aria-pressed`,
-  disables MOSH / LIFT / 2STEP / 跳指 while riding and re-enables on dismount.
+- `App` owns the button; `handleRideToggle` flips `player.rideActive` and updates `aria-pressed`.
+  Riding is mutually exclusive with MOSH / LIFT / 2STEP / 跳指 the same way those actions already
+  are with each other: starting any of them dismounts, and `syncRideChrome` keeps the button in step.
 - `AppSnapshot.rideActive` exposed for tests.
 
 ## Testing

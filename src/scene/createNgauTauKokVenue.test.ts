@@ -20,6 +20,7 @@ describe("createVenue for Ngau Tau Kok", () => {
     expect(build.colliders.length).toBeGreaterThan(5);
     expect(build.audiencePoints).toHaveLength(15);
     expect(build.stageLights.length).toBeGreaterThanOrEqual(4);
+    expect(build.lightShow).toBeUndefined();
 
     const names = collectNames(build.group);
     for (const expected of [
@@ -35,8 +36,10 @@ describe("createVenue for Ngau Tau Kok", () => {
       "pa-stair-1",
       "pa-stair-2",
       "pa-stair-3",
-      "pa-red-gear",
       "pa-desk",
+      "sound-mixer",
+      "lighting-console",
+      "foh-chair",
       "stairs-right",
       "crowd-barrier",
       "exit-door-stage-right",
@@ -68,6 +71,27 @@ describe("createVenue for Ngau Tau Kok", () => {
     const box = new THREE.Box3().setFromObject(platform);
     expect(box.max.z).toBeCloseTo(NTK_ENTRANCE_Z - 0.15, 5);
     expect(box.max.x).toBeLessThan(0);
+
+    // Both machines sit on the desk top and each chair stands on the platform behind its machine
+    const desk = build.group.getObjectByName("pa-desk")!;
+    const deskBox = new THREE.Box3().setFromObject(desk);
+    const chairs: THREE.Object3D[] = [];
+    build.group.traverse((o) => {
+      if (o.name === "foh-chair") chairs.push(o);
+    });
+    expect(chairs).toHaveLength(2);
+    for (const name of ["sound-mixer", "lighting-console"]) {
+      const machine = build.group.getObjectByName(name)!;
+      const machineBox = new THREE.Box3().setFromObject(machine);
+      expect(machineBox.min.y).toBeCloseTo(deskBox.max.y, 2);
+      expect(machineBox.min.x).toBeGreaterThan(deskBox.min.x);
+      expect(machineBox.max.x).toBeLessThan(deskBox.max.x);
+    }
+    for (const chair of chairs) {
+      const pos = chair.getWorldPosition(new THREE.Vector3());
+      expect(pos.y).toBeCloseTo(0.48, 5);
+      expect(pos.z).toBeGreaterThan(deskBox.max.z);
+    }
   });
 
   it("puts the stage-right EXIT door on the back wall beside the stage", () => {

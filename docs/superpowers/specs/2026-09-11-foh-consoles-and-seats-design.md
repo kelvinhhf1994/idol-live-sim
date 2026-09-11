@@ -30,7 +30,7 @@ stage, exactly like the existing Kowloon Bay sofas.
 
 | Venue | Desk | Machines | Chairs / seats | Colliders |
 |---|---|---|---|---|
-| Kowloon Bay (`props.ts`) | existing 4 m `pa-desk` | sound mixer on -X half, lighting console on +X half; old `pa-mixer` and two `monitor` boxes removed | two `foh-chair` behind the desk, one per machine; `seat: true, sitYaw: 0` | front barrier board shortened to end at `KB_PA_CX + 1.6` so a ≥1 m gap opens at the +X end (player radius 0.34 needs > 0.68 m) |
+| Kowloon Bay (`props.ts`) | existing 4 m `pa-desk`, moved forward to `KB_PA_DESK_Z = 2.7` so a 0.9 m operator aisle opens in front of the rear wall, and shifted +X so the desk end stays `KB_PA_DOOR_GAP` (1.02 m = 1.5 player widths) clear of the vestibule doorway wall | sound mixer on -X half, lighting console on +X half; old `pa-mixer` and two `monitor` boxes removed | two `foh-chair` behind the desk, one per machine; `seat: true, sitYaw: 0`; the `sound-mixer` / `lighting` teleports land on them | barrier front board runs from `KB_PA_CX - 1.6` to the +X end board, so the way in is the doorway aisle at the -X end; the +X end is closed up to the rear wall |
 | Ngau Tau Kok (`createNgauTauKokVenue.ts`) | red casing widened to 2.7 m | sound mixer + lighting console side by side; old mixer plane, `pa-red-gear`, `pa-mon1/2` removed | high stool replaced by two `foh-chair` on the 0.48 m platform; seat platforms at `height: 0.48`, `sitYaw: 0` | desk collider widened to match |
 | Neon Backstage (`createVenue.ts`) | 1.5 m black box replaced by a 0.78 m desk (3.0 × 0.8, z ≈ 2.2–3.0) | both machines on the desk top; "FOH" sign kept | two `foh-chair` behind the desk; `seat: true, sitYaw: 0` | old FOH box collider replaced by the desk AABB |
 

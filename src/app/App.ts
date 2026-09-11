@@ -24,9 +24,10 @@ import {
 } from "../player/penlight";
 import { PlayerController } from "../player/PlayerController";
 import type { TwoStepPose } from "../player/TwoStepAction";
+import { applyVenueTeleport } from "../player/venueTeleport";
 import { createWeekendHero } from "../scene/createWeekendHero";
 import { createVenue, type VenueBuild } from "../scene/createVenue";
-import { MAX_IDOL_COUNT } from "../show/idolMembers";
+import { DEFAULT_IDOL_COUNT, MAX_IDOL_COUNT } from "../show/idolMembers";
 import { SONG_CATALOG, getSongById, type SongDefinition } from "../show/songCatalog";
 import { SongPlayer } from "../show/SongPlayer";
 import { ShowController } from "../show/ShowController";
@@ -64,6 +65,7 @@ export interface AppSnapshot {
   jumpPointActive: boolean;
   jumpPointHeld: boolean;
   liftActive: boolean;
+  rideActive: boolean;
   supporterVisible: boolean;
   groundHeight: number;
   onStage: boolean;
@@ -116,6 +118,7 @@ export class App {
   private readonly twoStepElement = requireElement<HTMLButtonElement>("two-step-button");
   private readonly jumpPointElement = requireElement<HTMLButtonElement>("jump-point-button");
   private readonly liftButton = requireElement<HTMLButtonElement>("lift-button");
+  private readonly ftSpecialButton = requireElement<HTMLButtonElement>("ft-special-button");
   private readonly cameraButton = requireElement<HTMLButtonElement>("camera-button");
   private readonly cameraLabel = requireElement<HTMLElement>("camera-label");
   private readonly houseLightsButton = requireElement<HTMLButtonElement>("house-lights-button");
@@ -126,6 +129,9 @@ export class App {
   private readonly songSelectButton = requireElement<HTMLButtonElement>("song-select-button");
   private readonly songSelectLabel = requireElement<HTMLElement>("song-select-label");
   private readonly songSelectPanel = requireElement<HTMLElement>("song-select-panel");
+  private readonly teleportSelect = requireElement<HTMLElement>("teleport-select");
+  private readonly teleportButton = requireElement<HTMLButtonElement>("teleport-button");
+  private readonly teleportPanel = requireElement<HTMLElement>("teleport-panel");
   private readonly videoButton = requireElement<HTMLButtonElement>("video-button");
   private readonly videoCloseButton = requireElement<HTMLButtonElement>("video-close");
   private readonly videoSeekBackward = requireElement<HTMLButtonElement>("video-seek-backward");
@@ -162,7 +168,7 @@ export class App {
   private qualityElapsed = 0;
   private qualityFrames = 0;
   private reducedQuality = false;
-  private idolCount = MAX_IDOL_COUNT;
+  private idolCount = DEFAULT_IDOL_COUNT;
   private readonly playerOutlines: THREE.Mesh[];
 
   constructor(canvas: HTMLCanvasElement) {
@@ -218,6 +224,7 @@ export class App {
           this.jumpPointButton.cancel();
           this.beatButton.cancel();
           this.player.startMosh();
+          this.syncRideChrome();
         }
       },
       () => this.player.releaseMosh(),
@@ -233,6 +240,7 @@ export class App {
         this.liftButton.setAttribute("aria-pressed", "false");
         this.jumpButton.disabled = false;
         this.moshButton.setDisabled(false);
+        this.syncRideChrome();
       },
       () => this.player.releaseTwoStep(),
     );
@@ -247,6 +255,7 @@ export class App {
         this.liftButton.setAttribute("aria-pressed", "false");
         this.jumpButton.disabled = false;
         this.moshButton.setDisabled(false);
+        this.syncRideChrome();
       },
       () => this.player.releaseJumpPoint(),
     );
@@ -298,9 +307,11 @@ export class App {
     this.buildPenlightColorGrid();
     this.buildIdolCountChips();
     this.buildSongSelectPanel();
+    this.syncTeleportChrome();
     this.syncSettingsControls(this.player.gameSettings);
     this.syncPenlightChrome();
     this.syncSongSelectChrome();
+    this.syncRideChrome();
 
     this.venueBadgeText = document.querySelector<HTMLElement>("#venue-badge-text");
     this.stationSelector = new StationSelector(
@@ -330,10 +341,12 @@ export class App {
     this.enterButton.addEventListener("click", this.handleEnter);
     this.jumpButton.addEventListener("pointerdown", this.handleJump);
     this.liftButton.addEventListener("click", this.handleLiftToggle);
+    this.ftSpecialButton.addEventListener("click", this.handleRideToggle);
     this.cameraButton.addEventListener("click", this.handleCameraToggle);
     this.houseLightsButton.addEventListener("click", this.handleHouseLightsToggle);
     this.idolCountButton.addEventListener("click", this.handleIdolCountToggle);
     this.songSelectButton.addEventListener("click", this.handleSongSelectToggle);
+    this.teleportButton.addEventListener("click", this.handleTeleportToggle);
     this.syncHouseLightsChrome();
     this.fullscreenButton.addEventListener("click", this.handleFullscreen);
     this.fullscreenGuideClose.addEventListener("click", this.handleFullscreenGuideClose);
@@ -409,6 +422,7 @@ export class App {
       jumpPointActive: this.player.jumpPointActive,
       jumpPointHeld: this.player.jumpPointHeld,
       liftActive: this.player.liftActive,
+      rideActive: this.player.rideActive,
       supporterVisible: this.player.supporterVisible,
       groundHeight: this.player.groundHeight,
       onStage: this.player.groundHeight > GENERIC_VENUE.spawn.y,
@@ -455,10 +469,12 @@ export class App {
     this.enterButton.removeEventListener("click", this.handleEnter);
     this.jumpButton.removeEventListener("pointerdown", this.handleJump);
     this.liftButton.removeEventListener("click", this.handleLiftToggle);
+    this.ftSpecialButton.removeEventListener("click", this.handleRideToggle);
     this.cameraButton.removeEventListener("click", this.handleCameraToggle);
     this.houseLightsButton.removeEventListener("click", this.handleHouseLightsToggle);
     this.idolCountButton.removeEventListener("click", this.handleIdolCountToggle);
     this.songSelectButton.removeEventListener("click", this.handleSongSelectToggle);
+    this.teleportButton.removeEventListener("click", this.handleTeleportToggle);
     if (ENABLE_YOUTUBE) {
       this.videoButton.removeEventListener("click", this.handleVideoOpen);
       this.videoUrlForm.removeEventListener("submit", this.handleVideoLoad);
@@ -495,6 +511,8 @@ export class App {
     this.player.update(dt, movement, this.cameraController.yaw, this.entered);
     this.cameraController.update(dt, this.player.position);
     this.syncShowPerformance();
+    // The rig only performs in show mode; with the house lights up it holds still like a work-light call
+    if (!this.venue.houseLights?.enabled) this.venue.lightShow?.update(this.timer.getElapsed());
     this.showController.update(this.timer.getElapsed(), dt, this.player.audienceImpact);
     this.renderer.render(this.scene, this.camera);
     this.updateQuality(rawDt);
@@ -537,6 +555,8 @@ export class App {
     // Update camera controller with new venue bounds
     this.cameraController.setVenue(venueDef, this.venue.colliders);
     this.syncHouseLightsChrome();
+    this.syncTeleportChrome();
+    this.syncRideChrome();
 
     // Update YouTube player if needed
     if (this.youtubePlayer && venueDef.youtubeVideoId) {
@@ -574,7 +594,35 @@ export class App {
     this.liftButton.setAttribute("aria-pressed", String(active));
     this.jumpButton.disabled = active;
     this.moshButton.setDisabled(active);
+    this.syncRideChrome();
   };
+
+  private readonly handleRideToggle = (): void => {
+    if (!this.entered) return;
+    const active = !this.player.rideActive;
+    if (active) {
+      this.moshButton.cancel();
+      this.twoStepButton.cancel();
+      this.jumpPointButton.cancel();
+      this.beatButton.cancel();
+      // Mounting dismisses the lift, so restore its chrome like the other pit actions do.
+      this.liftButton.setAttribute("aria-pressed", "false");
+      this.jumpButton.disabled = false;
+      this.moshButton.setDisabled(false);
+    }
+    this.player.setRideActive(active);
+    this.syncRideChrome();
+  };
+
+  /** FT Special is a Kowloon Bay exclusive: hide elsewhere and dismount when leaving. */
+  private syncRideChrome(): void {
+    const available = this.currentVenueDefinition.id === KOWLOON_BAY_VENUE.id;
+    if (!available && this.player.rideActive) this.player.setRideActive(false);
+    const riding = this.player.rideActive;
+    this.ftSpecialButton.hidden = !available;
+    this.ftSpecialButton.setAttribute("aria-pressed", String(riding));
+    this.ftSpecialButton.classList.toggle("is-active", riding);
+  }
 
   private readonly handleCameraToggle = (): void => {
     const mode = this.cameraController.toggleMode();
@@ -608,18 +656,71 @@ export class App {
     this.setSongSelectPanelOpen(this.songSelectPanel.hasAttribute("hidden"));
   };
 
+  private readonly handleTeleportToggle = (): void => {
+    this.setTeleportPanelOpen(this.teleportPanel.hasAttribute("hidden"));
+  };
+
   private setIdolCountPanelOpen(open: boolean): void {
     this.idolCountPanel.hidden = !open;
     this.idolCountButton.setAttribute("aria-expanded", String(open));
     this.idolCountButton.classList.toggle("is-active", open);
-    if (open) this.setSongSelectPanelOpen(false);
+    if (open) {
+      this.setSongSelectPanelOpen(false);
+      this.setTeleportPanelOpen(false);
+    }
   }
 
   private setSongSelectPanelOpen(open: boolean): void {
     this.songSelectPanel.hidden = !open;
     this.songSelectButton.setAttribute("aria-expanded", String(open));
     this.songSelectButton.classList.toggle("is-active", open);
-    if (open) this.setIdolCountPanelOpen(false);
+    if (open) {
+      this.setIdolCountPanelOpen(false);
+      this.setTeleportPanelOpen(false);
+    }
+  }
+
+  private setTeleportPanelOpen(open: boolean): void {
+    this.teleportPanel.hidden = !open;
+    this.teleportButton.setAttribute("aria-expanded", String(open));
+    this.teleportButton.classList.toggle("is-active", open);
+    if (open) {
+      this.setIdolCountPanelOpen(false);
+      this.setSongSelectPanelOpen(false);
+    }
+  }
+
+  private syncTeleportChrome(): void {
+    const spots = this.currentVenueDefinition.teleports ?? [];
+    this.teleportSelect.hidden = spots.length === 0;
+    this.setTeleportPanelOpen(false);
+    this.teleportPanel.replaceChildren();
+    for (const spot of spots) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "teleport-chip";
+      chip.textContent = spot.label;
+      chip.setAttribute("role", "option");
+      chip.setAttribute("aria-label", `傳送到${spot.label}`);
+      chip.dataset.teleportId = spot.id;
+      chip.addEventListener("click", () => this.handleTeleport(spot.id));
+      this.teleportPanel.append(chip);
+    }
+  }
+
+  private handleTeleport(spotId: string): void {
+    const spot = this.currentVenueDefinition.teleports?.find((item) => item.id === spotId);
+    if (!spot) return;
+    this.moshButton.cancel();
+    this.twoStepButton.cancel();
+    this.jumpPointButton.cancel();
+    this.liftButton.setAttribute("aria-pressed", "false");
+    this.jumpButton.disabled = false;
+    this.moshButton.setDisabled(false);
+    applyVenueTeleport(this.player, this.cameraController, spot);
+    this.cameraController.update(1, this.player.position);
+    this.syncRideChrome();
+    this.setTeleportPanelOpen(false);
   }
 
   private buildIdolCountChips(): void {

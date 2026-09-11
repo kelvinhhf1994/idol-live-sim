@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { moveCircleWithCollisions } from "../core/collision";
+import { isOnSeat } from "../core/venueGround";
 import { formationPoints } from "../show/formation";
 import { MAX_IDOL_COUNT } from "../show/idolMembers";
-import { GENERIC_VENUE } from "./venue";
+import { GENERIC_FOH_CHAIRS, GENERIC_FOH_DESK, GENERIC_VENUE } from "./venue";
 
 describe("generic venue stage layout", () => {
   it("uses the approved 1.25x stage with a fixed rear edge", () => {
@@ -48,6 +50,23 @@ describe("generic venue stage layout", () => {
     }
     for (const [, , z] of GENERIC_VENUE.show.audiencePoints) {
       expect(z).toBeGreaterThan(GENERIC_VENUE.crowdBarrier.maxZ);
+    }
+  });
+
+  it("puts two sittable FOH chairs behind the desk that a floor player can walk onto", () => {
+    const seats = GENERIC_VENUE.platforms.filter((p) => p.seat);
+    expect(seats).toHaveLength(2);
+    const desk = GENERIC_VENUE.colliders.find((c) => c.minZ === GENERIC_FOH_DESK.z - GENERIC_FOH_DESK.depth / 2)!;
+    expect(desk).toBeDefined();
+    for (const [i, seat] of seats.entries()) {
+      expect(seat.height).toBe(0);
+      expect(seat.sitYaw).toBe(0); // Facing the stage (-Z)
+      expect(seat.bounds.minZ).toBeGreaterThanOrEqual(desk.maxZ);
+      const chair = GENERIC_FOH_CHAIRS[i];
+      // Walk in from the open hall behind the desk and stop on the chair
+      const onto = moveCircleWithCollisions({ x: chair.x, z: chair.z + 2 }, { x: 0, z: -2 }, 0.34, GENERIC_VENUE.colliders, 0);
+      expect(onto.z).toBeCloseTo(chair.z, 5);
+      expect(isOnSeat(GENERIC_VENUE, onto.x, onto.z, 0)).toBe(true);
     }
   });
 

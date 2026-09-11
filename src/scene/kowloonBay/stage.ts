@@ -1,11 +1,18 @@
 import * as THREE from "three";
 import {
+  KB_BACK_WALL_Z,
   KB_STAGE_FRONT_Z,
-  KB_WALKWAY_FRONT_Z,
+  KB_WALKWAY_HEIGHT,
+  KB_WALKWAY_STEPS,
   type ElevatedPlatform,
   type VenueDefinition,
 } from "../../config/venue";
 import { addBox, setInstanceTransform, speakerGrilleTexture, type InstanceTransform, type SharedMaterials } from "../venueKit";
+import { frontierLedTexture } from "./textures";
+
+const LED_WIDTH = 8.4;
+const LED_HEIGHT = LED_WIDTH * (9 / 16);
+const LED_ART_URL = "/textures/kb-led-frontier.png";
 
 const STEP_MAT = new THREE.MeshStandardMaterial({ color: 0x1a1920, roughness: 0.75, metalness: 0.2 });
 const STRIPE_MAT = new THREE.MeshStandardMaterial({ color: 0xffee00, emissive: 0xffaa00, emissiveIntensity: 0.8, roughness: 0.3 });
@@ -33,13 +40,52 @@ export function buildStage(
     addBox(group, 0.05, 0.004, 0.3, tapeMat, x, height + 0.002, bounds.maxZ - 0.45, "", false);
   }
 
+  buildLedWall(group, mats, height);
   buildTrussWalkway(group, mats, walkway);
   buildWalkwayStairs(group, mats, -1);
   buildWalkwayStairs(group, mats, 1);
 }
 
+/** 16:9 video wall flush to the back curtain, showing the Frontier title card. */
+function buildLedWall(group: THREE.Group, mats: SharedMaterials, stageHeight: number): void {
+  const ledTexture = frontierLedTexture();
+  const ledMaterial = new THREE.MeshStandardMaterial({
+    map: ledTexture,
+    emissive: 0xffffff,
+    emissiveMap: ledTexture,
+    emissiveIntensity: 1.05,
+    roughness: 0.28,
+    metalness: 0.12,
+  });
+  const ledWall = new THREE.Mesh(new THREE.PlaneGeometry(LED_WIDTH, LED_HEIGHT), ledMaterial);
+  ledWall.name = "led-screen";
+  ledWall.position.set(0, stageHeight + LED_HEIGHT / 2, KB_BACK_WALL_Z + 0.12);
+  group.add(ledWall);
+  addBox(
+    group,
+    LED_WIDTH + 0.22,
+    LED_HEIGHT + 0.22,
+    0.1,
+    mats.fixtureBlack,
+    0,
+    ledWall.position.y,
+    KB_BACK_WALL_Z + 0.06,
+    "led-frame",
+    false,
+  );
+
+  if (typeof document !== "undefined" && import.meta.env.MODE !== "test") {
+    new THREE.TextureLoader().load(LED_ART_URL, (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      ledMaterial.map = tex;
+      ledMaterial.emissiveMap = tex;
+      ledMaterial.needsUpdate = true;
+    });
+  }
+}
+
 /**
- * Two tiers of box-section lighting truss (the kind normally hung from the ceiling) laid along the stage front,
+ * Stacked tiers of box-section lighting truss (the kind normally hung from the ceiling) laid along the stage front,
  * with a diamond-plate top and five wedge monitors facing the stage. Each tier is a full square section:
  * four main chords, verticals and diagonals on the front and back faces, and ties across the top and bottom.
  */
@@ -60,8 +106,11 @@ function buildTrussWalkway(group: THREE.Group, mats: SharedMaterials, walkway: V
   const braces: InstanceTransform[] = [];
   const bays = Math.round(width / 0.5);
   const bay = width / bays;
-  const tier = top / 2;
-  for (const [lo, hi] of [[chordR, tier - chordR], [tier + chordR, top - chordR]] as const) {
+  // Stack as many ~0.45 m truss sections as the walkway height needs
+  const tiers = Math.max(2, Math.round(top / 0.45));
+  const tier = top / tiers;
+  const sections = Array.from({ length: tiers }, (_, t) => [t * tier + chordR, (t + 1) * tier - chordR] as const);
+  for (const [lo, hi] of sections) {
     const mid = (lo + hi) / 2;
     const rise = hi - lo;
     for (const z of zFaces) {
@@ -118,24 +167,26 @@ function buildTrussWalkway(group: THREE.Group, mats: SharedMaterials, walkway: V
   group.add(truss);
 }
 
-/** Four treads at one end of the walkway, rising toward the stage, with an outer handrail. */
+/** Treads at one end of the walkway, rising toward the stage to the walkway height, with an outer handrail. */
 function buildWalkwayStairs(group: THREE.Group, mats: SharedMaterials, side: -1 | 1): void {
   const stairs = new THREE.Group();
   stairs.name = side < 0 ? "walkway-stairs-left" : "walkway-stairs-right";
   const cx = side < 0 ? -3.95 : 3.95; // Tread span x ∈ [-4.4, -3.5] or [3.5, 4.4]
+  const steps = KB_WALKWAY_STEPS;
+  const tread = 0.3;
+  const rise = KB_WALKWAY_HEIGHT;
 
-  for (let i = 0; i < 4; i++) {
-    const h = 0.2 * (i + 1);
-    const z = KB_WALKWAY_FRONT_Z + 0.45 - 0.3 * i; // -6.95, -7.25, -7.55, -7.85
-    addBox(stairs, 0.9, h, 0.3, STEP_MAT, cx, h / 2, z);
-    addBox(stairs, 0.9, 0.03, 0.05, STRIPE_MAT, cx, h + 0.015, z + 0.125, "", false);
+  for (let i = 0; i < steps; i++) {
+    const h = (rise / steps) * (i + 1);
+    const z = KB_STAGE_FRONT_Z + tread * (steps - i - 0.5); // Top tread sits against the stage front
+    addBox(stairs, 0.9, h, tread, STEP_MAT, cx, h / 2, z);
+    addBox(stairs, 0.9, 0.03, 0.05, STRIPE_MAT, cx, h + 0.015, z + tread / 2 - 0.025, "", false);
   }
 
   const railX = cx + side * 0.47;
-  const bottomZ = KB_WALKWAY_FRONT_Z + 0.6;
+  const bottomZ = KB_STAGE_FRONT_Z + tread * steps;
   const topZ = KB_STAGE_FRONT_Z;
   const run = bottomZ - topZ;
-  const rise = 0.8;
   for (const [z, h] of [[bottomZ, 0.9], [topZ, 0.9 + rise]] as const) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, h, 6), mats.steel);
     post.position.set(railX, h / 2, z);
@@ -143,7 +194,7 @@ function buildWalkwayStairs(group: THREE.Group, mats: SharedMaterials, side: -1 
   }
   const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, Math.hypot(run, rise), 6), mats.steel);
   rail.position.set(railX, 0.9 + rise / 2, (bottomZ + topZ) / 2);
-  rail.rotation.x = -Math.atan2(run, rise); // Rises 0.8 over 1.2 toward -Z
+  rail.rotation.x = -Math.atan2(run, rise); // Rises toward -Z
   stairs.add(rail);
   group.add(stairs);
 }

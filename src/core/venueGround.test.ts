@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GENERIC_VENUE } from "../config/venue";
 import type { VenueDefinition } from "../config/venue";
-import { groundHeightAt } from "./venueGround";
+import { groundHeightAt, isOnSeat, seatFacingAt } from "./venueGround";
 
 // Two overlapping platforms at the same XZ: a stair tread at 2.8 and a 2/F deck at 3.0
 const twoLevel: Pick<VenueDefinition, "platforms" | "spawn"> = {
@@ -44,5 +44,36 @@ describe("groundHeightAt with a player height", () => {
 
   it("keeps the legacy highest-platform behaviour when no height is given", () => {
     expect(groundHeightAt(twoLevel, 0, 0)).toBe(3.0);
+  });
+});
+
+describe("isOnSeat", () => {
+  const seated = {
+    platforms: [
+      { bounds: { minX: -2, maxX: 2, minZ: 0, maxZ: 1 }, height: 3.0, seat: true },
+      { bounds: { minX: -2, maxX: 2, minZ: 0, maxZ: 1 }, height: 0 },
+    ],
+  };
+
+  it("is true on a seat platform at the matching floor", () => {
+    expect(isOnSeat(seated, 0, 0.4, 3.0)).toBe(true);
+  });
+
+  it("is false on the same XZ from the floor below", () => {
+    expect(isOnSeat(seated, 0, 0.4, 0)).toBe(false);
+  });
+});
+
+describe("seatFacingAt", () => {
+  const seated = {
+    platforms: [{ bounds: { minX: -2, maxX: 2, minZ: 0, maxZ: 1 }, height: 3.0, seat: true, sitYaw: Math.PI }],
+  };
+
+  it("returns the seat yaw on the matching floor", () => {
+    expect(seatFacingAt(seated, 0, 0.4, 3.0)).toBe(Math.PI);
+  });
+
+  it("is undefined off the seat", () => {
+    expect(seatFacingAt(seated, 0, 0.4, 0)).toBeUndefined();
   });
 });

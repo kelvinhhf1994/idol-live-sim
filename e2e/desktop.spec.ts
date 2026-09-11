@@ -725,11 +725,16 @@ test("enters 九龍灣 via the station selector and can stand in the 2/F glass r
   // Spawns on the vestibule floor, under the glass room
   await expect.poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().player.y)).toBe(0);
 
-  // Debug-place the player on the 2/F glass room deck
-  await page.evaluate(() => window.__liveHouseDebug?.placePlayer(-4.75, 2.6, 3.0));
+  const teleportButton = page.getByRole("button", { name: "傳送" });
+  await expect(teleportButton).toBeVisible();
+  await teleportButton.click();
+  await page.getByRole("option", { name: "傳送到2/F 玻璃望台" }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().player.y))
+    .toBeCloseTo(3.5, 5);
   await expect
     .poll(() => page.evaluate(() => window.__liveHouseDebug?.snapshot().groundHeight))
-    .toBeCloseTo(3.0, 5);
+    .toBeCloseTo(3.5, 5);
 });
 
 test("selects a song from the top-left panel and drives captured dance", async ({ page }) => {

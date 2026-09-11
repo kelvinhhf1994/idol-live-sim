@@ -4,25 +4,28 @@ import {
   KB_BACK_WALL_Z,
   KB_DECK_HEIGHT,
   KB_DECK_MIN_Z,
+  KB_DECK_RAIL_GAP,
+  KB_GLASS_SOFA,
   KB_DOORWAY,
   KB_HALL_CEILING,
   KB_LANDING,
   KB_LOWER_STAIR,
   KB_MIN_X,
   KB_PARTITION_X,
+  KB_REAR_WALL_Z,
   KB_STAGE_FRONT_Z,
   KB_STAGE_HEIGHT,
   KB_UPPER_STAIR,
   KB_VESTIBULE,
 } from "../../config/venue";
 import { addBox, labelPlane, pleatedCurtainTexture, setInstanceTransform, type InstanceTransform, type SharedMaterials } from "../venueKit";
+import { buildBackstageSet } from "./backstageSet";
 import { acousticTileMaterial } from "./shell";
 import { PLUSHIE_COLORS } from "./textures";
 
-const GLASS_ROOM_CEILING_Y = 5.8;
-// Floor-to-ceiling glazing: a low kick plate at deck level and a slim header under the roof
+// Floor-to-ceiling glazing: a low kick plate at deck level, glass running up to the hall slab
 const GLASS_SILL_Y = KB_DECK_HEIGHT + 0.08;
-const GLASS_TOP_Y = GLASS_ROOM_CEILING_Y - 0.12;
+const GLASS_TOP_Y = KB_HALL_CEILING;
 const GAP_HEAD_Y = 2.5; // Clear height of the idol gap through the partition curtain
 const STEP_MAT = new THREE.MeshStandardMaterial({ color: 0x1a1920, roughness: 0.75, metalness: 0.2 });
 const STRIPE_MAT = new THREE.MeshStandardMaterial({ color: 0xffee00, emissive: 0xffaa00, emissiveIntensity: 0.8, roughness: 0.3 });
@@ -33,10 +36,11 @@ export function buildBackstage(group: THREE.Group, mats: SharedMaterials): void 
   buildLowerStairs(group, mats);
   buildUpperStairs(group, mats);
   buildUpperDeck(group, mats);
+  buildBackstageInterior(group, mats);
   buildVestibule(group, mats);
   buildGlassRoom(group, mats);
-  buildRoadCases(group, mats);
   buildBackstageLights(group, mats);
+  buildBackstageSet(group, mats);
 }
 
 /** Floor-to-ceiling black curtain wall between the hall and the two-storey backstage, with the idol gap on 1/F. */
@@ -152,9 +156,14 @@ function buildUpperStairs(group: THREE.Group, mats: SharedMaterials): void {
 function buildUpperDeck(group: THREE.Group, mats: SharedMaterials): void {
   const deck = new THREE.Group();
   deck.name = "upper-deck";
-  const deckMat = new THREE.MeshStandardMaterial({ color: 0x1d1c22, roughness: 0.8 });
+  const deckMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d6, roughness: 0.72 });
+  const dark = mats.wallCharcoal;
+  // +X / -Z faces sit on the hall; keep those charcoal so the cream slab does not flash outside
+  const corridorDeck = [dark, deckMat, deckMat, dark, deckMat, deckMat];
+  const glassDeck = [dark, deckMat, deckMat, dark, deckMat, dark];
   const corridorLen = KB_VESTIBULE.minZ - KB_DECK_MIN_Z;
-  addBox(deck, KB_PARTITION_X - KB_MIN_X, 0.12, corridorLen, deckMat, (KB_MIN_X + KB_PARTITION_X) / 2, KB_DECK_HEIGHT - 0.06, (KB_DECK_MIN_Z + KB_VESTIBULE.minZ) / 2, "deck-corridor");
+  addBox(deck, KB_PARTITION_X - KB_MIN_X, 0.12, corridorLen, deckMat, (KB_MIN_X + KB_PARTITION_X) / 2, KB_DECK_HEIGHT - 0.06, (KB_DECK_MIN_Z + KB_VESTIBULE.minZ) / 2, "deck-corridor").material =
+    corridorDeck;
   addBox(
     deck,
     KB_VESTIBULE.maxX - KB_VESTIBULE.minX,
@@ -165,13 +174,11 @@ function buildUpperDeck(group: THREE.Group, mats: SharedMaterials): void {
     KB_DECK_HEIGHT - 0.06,
     (KB_VESTIBULE.minZ + KB_VESTIBULE.maxZ) / 2,
     "deck-glass-room",
-  );
+  ).material = glassDeck;
 
-  // Two-rail steel balustrade along the stairwell edge, open only where the top tread meets the deck
-  const topTreadMinX = KB_UPPER_STAIR.startX - KB_UPPER_STAIR.tread * KB_UPPER_STAIR.steps;
+  // Two-rail steel balustrade along the stairwell edge, open at the top-of-stair landing
   const edges: Array<{ from: readonly [number, number]; to: readonly [number, number] }> = [
-    { from: [KB_MIN_X, KB_DECK_MIN_Z], to: [topTreadMinX, KB_DECK_MIN_Z] },
-    { from: [topTreadMinX + KB_UPPER_STAIR.tread, KB_DECK_MIN_Z], to: [KB_PARTITION_X, KB_DECK_MIN_Z] },
+    { from: [KB_DECK_RAIL_GAP.maxX, KB_DECK_MIN_Z], to: [KB_PARTITION_X, KB_DECK_MIN_Z] },
   ];
   const transforms: InstanceTransform[] = [];
   for (const { from, to } of edges) {
@@ -196,6 +203,50 @@ function buildUpperDeck(group: THREE.Group, mats: SharedMaterials): void {
   group.add(deck);
 }
 
+/** White painted room: walls and ceilings on both backstage floors so the furniture reads as one interior. */
+function buildBackstageInterior(group: THREE.Group, mats: SharedMaterials): void {
+  const interior = new THREE.Group();
+  interior.name = "backstage-interior";
+  const white = mats.offWhite;
+  const dark = mats.wallCharcoal;
+  // BoxGeometry groups: +X, -X, +Y, -Y, +Z, -Z. Keep white on the room side only.
+  const outerWall = [white, dark, white, white, white, white];
+  const backWall = [dark, white, white, white, white, dark];
+  const partitionWall = [dark, white, white, white, white, white];
+  const cx = (KB_MIN_X + KB_PARTITION_X) / 2;
+  const depth = KB_REAR_WALL_Z - KB_BACK_WALL_Z;
+  const midZ = (KB_BACK_WALL_Z + KB_REAR_WALL_Z) / 2;
+  addBox(interior, 0.05, KB_HALL_CEILING, depth, white, KB_MIN_X + 0.03, KB_HALL_CEILING / 2, midZ, "backstage-wall", false).material = outerWall;
+  addBox(interior, KB_PARTITION_X - KB_MIN_X, KB_HALL_CEILING, 0.05, white, cx, KB_HALL_CEILING / 2, KB_BACK_WALL_Z + 0.02, "backstage-wall", false).material = backWall;
+  const paintPartition = (minZ: number, maxZ: number, y0: number, y1: number) => {
+    addBox(interior, 0.04, y1 - y0, maxZ - minZ, white, KB_PARTITION_X - 0.06, (y0 + y1) / 2, (minZ + maxZ) / 2, "backstage-wall", false).material = partitionWall;
+  };
+  paintPartition(KB_STAGE_FRONT_Z, KB_BACKSTAGE_GAP.minZ, 0, KB_DECK_HEIGHT);
+  paintPartition(KB_BACKSTAGE_GAP.maxZ, KB_VESTIBULE.minZ, 0, KB_DECK_HEIGHT);
+  paintPartition(KB_DECK_MIN_Z, KB_VESTIBULE.minZ, KB_DECK_HEIGHT, KB_HALL_CEILING);
+  paintPartition(KB_BACK_WALL_Z, KB_STAGE_FRONT_Z, KB_DECK_HEIGHT, KB_HALL_CEILING);
+  const soffitLen = KB_VESTIBULE.minZ - KB_DECK_MIN_Z;
+  const soffit = [dark, white, dark, white, white, dark];
+  addBox(interior, KB_PARTITION_X - KB_MIN_X, 0.04, soffitLen, white, cx, KB_DECK_HEIGHT - 0.14, (KB_DECK_MIN_Z + KB_VESTIBULE.minZ) / 2, "backstage-ceiling", false).material = soffit;
+  addBox(
+    interior,
+    KB_VESTIBULE.maxX - KB_VESTIBULE.minX,
+    0.04,
+    KB_VESTIBULE.maxZ - KB_VESTIBULE.minZ,
+    white,
+    (KB_VESTIBULE.minX + KB_VESTIBULE.maxX) / 2,
+    KB_DECK_HEIGHT - 0.14,
+    (KB_VESTIBULE.minZ + KB_VESTIBULE.maxZ) / 2,
+    "backstage-ceiling",
+    false,
+  ).material = soffit;
+  addBox(interior, KB_PARTITION_X - KB_MIN_X, 0.06, KB_VESTIBULE.minZ - KB_DECK_MIN_Z, white, cx, KB_HALL_CEILING - 0.08, (KB_DECK_MIN_Z + KB_VESTIBULE.minZ) / 2, "backstage-ceiling", false).material =
+    [dark, white, dark, white, white, dark];
+  addBox(interior, 0.06, 0.1, soffitLen, white, KB_MIN_X + 0.08, 0.05, (KB_DECK_MIN_Z + KB_VESTIBULE.minZ) / 2, "", false);
+  addBox(interior, 0.06, 0.1, soffitLen, white, KB_MIN_X + 0.08, KB_DECK_HEIGHT + 0.05, (KB_DECK_MIN_Z + KB_VESTIBULE.minZ) / 2, "", false);
+  group.add(interior);
+}
+
 /**
  * Backstage work lighting: cool-white fluorescent battens on both floors that stay on permanently.
  * Their emissive material and point lights are independent of the hall's house/show lights.
@@ -207,29 +258,29 @@ function buildBackstageLights(group: THREE.Group, mats: SharedMaterials): void {
   const cx = (KB_MIN_X + KB_PARTITION_X) / 2;
   const glassCx = (KB_VESTIBULE.minX + KB_VESTIBULE.maxX) / 2;
   const glassCz = (KB_VESTIBULE.minZ + KB_VESTIBULE.maxZ) / 2;
-  const batten = (x: number, y: number, z: number, intensity: number, distance: number) => {
+  const batten = (x: number, y: number, z: number, intensity: number, distance: number, rodTo?: number) => {
     addBox(lights, 1.25, 0.07, 0.14, mats.matteBlack, x, y + 0.05, z, "batten", false);
     addBox(lights, 1.2, 0.04, 0.06, tubeMat, x, y, z, "backstage-tube", false);
     const light = new THREE.PointLight(0xf4f7ff, intensity, distance, 1.8);
     light.position.set(x, y - 0.15, z);
     light.name = "backstage-light";
     lights.add(light);
+    if (rodTo !== undefined) {
+      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, rodTo - y, 6), mats.steel);
+      rod.position.set(x, (y + rodTo) / 2, z);
+      lights.add(rod);
+    }
   };
-  // 1/F: under the deck soffit over the landing, the corridor and the vestibule
+  // 1/F: under the deck soffit over the corridor and the vestibule; the landing is lit from the open stairwell
   const soffitY = KB_DECK_HEIGHT - 0.2;
-  batten(cx, soffitY, (KB_LANDING.minZ + KB_LANDING.maxZ) / 2, 8, 6);
+  batten(cx, KB_DECK_HEIGHT + 1.6, (KB_UPPER_STAIR.minZ + KB_UPPER_STAIR.maxZ) / 2, 10, 8, KB_HALL_CEILING);
   batten(cx, soffitY, -5.5, 8, 6);
   batten(cx, soffitY, -1.5, 8, 6);
   batten(glassCx, soffitY, glassCz, 10, 6);
   // 2/F: hung from the slab over the deck corridor, and under the glass room roof
   const deckY = KB_DECK_HEIGHT + 2.6;
-  for (const z of [-7.5, -3.0]) {
-    batten(cx, deckY, z, 8, 7);
-    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, KB_HALL_CEILING - deckY, 6), mats.steel);
-    rod.position.set(cx, (deckY + KB_HALL_CEILING) / 2, z);
-    lights.add(rod);
-  }
-  batten(glassCx, GLASS_ROOM_CEILING_Y - 0.12, glassCz, 12, 6);
+  for (const z of [-7.5, -3.0]) batten(cx, deckY, z, 8, 7, KB_HALL_CEILING);
+  batten(glassCx, KB_HALL_CEILING - 0.25, glassCz, 12, 7);
   group.add(lights);
 }
 
@@ -239,16 +290,21 @@ function buildVestibule(group: THREE.Group, mats: SharedMaterials): void {
   vestibule.name = "entrance-vestibule";
   const v = KB_VESTIBULE;
 
+  const dark = mats.wallCharcoal;
+  const white = mats.offWhite;
+  // Hall-facing faces stay charcoal; the room side stays white
+  const frontBox = [dark, dark, dark, dark, white, dark];
+  const sideBox = [dark, white, dark, dark, dark, dark];
   // Solid -Z face; tiles face -Z toward the stage
   const frontLen = v.maxX - v.minX;
-  addBox(vestibule, frontLen, KB_DECK_HEIGHT, 0.2, mats.wallCharcoal, (v.minX + v.maxX) / 2, KB_DECK_HEIGHT / 2, v.minZ, "vestibule-wall");
+  addBox(vestibule, frontLen, KB_DECK_HEIGHT, 0.2, white, (v.minX + v.maxX) / 2, KB_DECK_HEIGHT / 2, v.minZ, "vestibule-wall").material = frontBox;
   const frontTiles = new THREE.Mesh(new THREE.PlaneGeometry(frontLen, KB_DECK_HEIGHT), acousticTileMaterial(frontLen, KB_DECK_HEIGHT));
   frontTiles.rotation.y = Math.PI;
   frontTiles.position.set((v.minX + v.maxX) / 2, KB_DECK_HEIGHT / 2, v.minZ - 0.101);
   vestibule.add(frontTiles);
   // +X face in two segments around the doorway; tiles face +X into the hall
   for (const [a, b] of [[v.minZ, KB_DOORWAY.minZ], [KB_DOORWAY.maxZ, v.maxZ]] as const) {
-    addBox(vestibule, 0.2, KB_DECK_HEIGHT, b - a, mats.wallCharcoal, v.maxX, KB_DECK_HEIGHT / 2, (a + b) / 2, "vestibule-wall");
+    addBox(vestibule, 0.2, KB_DECK_HEIGHT, b - a, white, v.maxX, KB_DECK_HEIGHT / 2, (a + b) / 2, "vestibule-wall").material = sideBox;
     const tiles = new THREE.Mesh(new THREE.PlaneGeometry(b - a, KB_DECK_HEIGHT), acousticTileMaterial(b - a, KB_DECK_HEIGHT));
     tiles.rotation.y = Math.PI / 2;
     tiles.position.set(v.maxX + 0.101, KB_DECK_HEIGHT / 2, (a + b) / 2);
@@ -257,7 +313,7 @@ function buildVestibule(group: THREE.Group, mats: SharedMaterials): void {
   // Header over the doorway and steel trims
   const doorCz = (KB_DOORWAY.minZ + KB_DOORWAY.maxZ) / 2;
   const doorW = KB_DOORWAY.maxZ - KB_DOORWAY.minZ;
-  addBox(vestibule, 0.2, KB_DECK_HEIGHT - 2.2, doorW, mats.wallCharcoal, v.maxX, 2.2 + (KB_DECK_HEIGHT - 2.2) / 2, doorCz, "", false);
+  addBox(vestibule, 0.2, KB_DECK_HEIGHT - 2.2, doorW, dark, v.maxX, 2.2 + (KB_DECK_HEIGHT - 2.2) / 2, doorCz, "", false);
   const doorway = new THREE.Group();
   doorway.name = "entrance-doorway";
   doorway.position.set(v.maxX, 0, doorCz);
@@ -296,45 +352,62 @@ function buildGlassRoom(group: THREE.Group, mats: SharedMaterials): void {
   const cx = (v.minX + v.maxX) / 2;
   const cz = (v.minZ + v.maxZ) / 2;
   const sillH = GLASS_SILL_Y - KB_DECK_HEIGHT;
-  const headerH = GLASS_ROOM_CEILING_Y - GLASS_TOP_Y;
   const frontW = v.maxX - KB_PARTITION_X;
   const frontCx = (KB_PARTITION_X + v.maxX) / 2;
 
   addBox(room, frontW, sillH, 0.15, mats.wallCharcoal, frontCx, KB_DECK_HEIGHT + sillH / 2, v.minZ, "glass-room-sill");
-  addBox(room, frontW, headerH, 0.15, mats.wallCharcoal, frontCx, GLASS_TOP_Y + headerH / 2, v.minZ, "glass-room-header");
   glazing(room, mats, [KB_PARTITION_X + 0.05, v.maxX - 0.1], v.minZ, "z");
   addBox(room, 0.15, sillH, d, mats.wallCharcoal, v.maxX, KB_DECK_HEIGHT + sillH / 2, cz, "glass-room-sill");
-  addBox(room, 0.15, headerH, d, mats.wallCharcoal, v.maxX, GLASS_TOP_Y + headerH / 2, cz, "glass-room-header");
   glazing(room, mats, [v.minZ + 0.1, v.maxZ - 0.1], v.maxX, "x");
-  addBox(room, w + 0.15, 0.15, d + 0.15, mats.matteBlack, cx, GLASS_ROOM_CEILING_Y + 0.075, cz, "glass-room-roof");
+  const roof = addBox(room, w + 0.15, 0.12, d + 0.15, mats.offWhite, cx, KB_HALL_CEILING - 0.06, cz, "glass-room-roof");
+  roof.material = [mats.wallCharcoal, mats.wallCharcoal, mats.wallCharcoal, mats.offWhite, mats.wallCharcoal, mats.wallCharcoal];
 
   buildPlushieShelves(room, mats);
+  buildGlassSofa(room, mats);
   group.add(room);
 }
 
-/** Two glass panes split by a centre mullion, framed top and bottom. `axis` is the wall's running direction. */
+/** Sofa against the rear wall, facing the stage through the glass. Walk up and idle to sit. */
+function buildGlassSofa(room: THREE.Group, mats: SharedMaterials): void {
+  const { minX, maxX, minZ, maxZ } = KB_GLASS_SOFA;
+  const cx = (minX + maxX) / 2;
+  const cz = (minZ + maxZ) / 2;
+  const w = maxX - minX;
+  const d = maxZ - minZ;
+  const sofa = new THREE.Group();
+  sofa.name = "glass-sofa";
+  sofa.position.set(cx, KB_DECK_HEIGHT, cz);
+  const fabric = new THREE.MeshStandardMaterial({ color: 0xc4b8a8, roughness: 0.9 });
+  const cushion = new THREE.MeshStandardMaterial({ color: 0xd8cfc2, roughness: 0.85 });
+  addBox(sofa, w, 0.1, d, mats.matteBlack, 0, 0.12, 0);
+  addBox(sofa, w - 0.1, 0.16, d - 0.18, fabric, 0, 0.26, -0.02);
+  addBox(sofa, w - 0.08, 0.52, 0.14, fabric, 0, 0.52, d / 2 - 0.08);
+  for (const x of [-w / 2 + 0.08, w / 2 - 0.08]) addBox(sofa, 0.12, 0.36, d - 0.1, fabric, x, 0.4, 0, "", false);
+  addBox(sofa, w * 0.42, 0.12, d * 0.38, cushion, -w * 0.18, 0.38, -0.04, "", false);
+  addBox(sofa, w * 0.42, 0.12, d * 0.38, cushion, w * 0.18, 0.38, -0.04, "", false);
+  room.add(sofa);
+}
+
+/** One floor-to-ceiling pane, framed only at the edges. `axis` is the wall's running direction. */
 function glazing(parent: THREE.Group, mats: SharedMaterials, span: readonly [number, number], at: number, axis: "x" | "z"): void {
   const len = span[1] - span[0];
   const mid = (span[0] + span[1]) / 2;
   const h = GLASS_TOP_Y - GLASS_SILL_Y;
   const cy = (GLASS_SILL_Y + GLASS_TOP_Y) / 2;
-  const paneLen = len / 2 - 0.05;
-  for (const offset of [-len / 4, len / 4]) {
-    const pane = new THREE.Mesh(new THREE.PlaneGeometry(paneLen, h), mats.glass);
-    pane.name = "glass-pane";
-    if (axis === "z") {
-      pane.position.set(mid + offset, cy, at);
-    } else {
-      pane.position.set(at, cy, mid + offset);
-      pane.rotation.y = Math.PI / 2;
-    }
-    parent.add(pane);
+  const pane = new THREE.Mesh(new THREE.PlaneGeometry(len - 0.04, h), mats.glass);
+  pane.name = "glass-pane";
+  if (axis === "z") {
+    pane.position.set(mid, cy, at);
+  } else {
+    pane.position.set(at, cy, mid);
+    pane.rotation.y = Math.PI / 2;
   }
+  parent.add(pane);
   for (const y of [GLASS_SILL_Y, GLASS_TOP_Y]) {
     if (axis === "z") addBox(parent, len, 0.08, 0.08, mats.frameBlack, mid, y, at, "", false);
     else addBox(parent, 0.08, 0.08, len, mats.frameBlack, at, y, mid, "", false);
   }
-  for (const p of [span[0], mid, span[1]]) {
+  for (const p of [span[0], span[1]]) {
     if (axis === "z") addBox(parent, 0.08, h, 0.08, mats.frameBlack, p, cy, at, "", false);
     else addBox(parent, 0.08, h, 0.08, mats.frameBlack, at, cy, p, "", false);
   }
@@ -365,11 +438,3 @@ function buildPlushieShelves(room: THREE.Group, mats: SharedMaterials): void {
   room.add(boxes);
 }
 
-/** Black road cases parked along the corridor's -X wall (colliders in venue.ts). */
-function buildRoadCases(group: THREE.Group, mats: SharedMaterials): void {
-  const caseMat = new THREE.MeshStandardMaterial({ color: 0x111114, roughness: 0.6, metalness: 0.3 });
-  for (const [z0, z1] of [[-3.4, -2.6], [-1.6, -0.8]] as const) {
-    const roadCase = addBox(group, 0.5, 1.0, z1 - z0, caseMat, KB_MIN_X + 0.25, 0.5, (z0 + z1) / 2, "road-case");
-    addBox(roadCase, 0.52, 0.04, z1 - z0 + 0.02, mats.steel, 0, 0.5, 0, "", false);
-  }
-}

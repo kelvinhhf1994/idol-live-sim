@@ -1,8 +1,10 @@
 import * as THREE from "three";
-import { KB_REAR_WALL_Z, KB_WC_BLOCK } from "../../config/venue";
+import { KB_FOH_CHAIRS, KB_PA_CX, KB_PA_DESK_Z, KB_REAR_WALL_Z, KB_WC_BLOCK } from "../../config/venue";
 import {
   addBox,
-  consoleMixerTexture,
+  buildFohChair,
+  buildLightingConsole,
+  buildSoundMixer,
   createExitDoor,
   createFridgeTexture,
   labelPlane,
@@ -10,7 +12,7 @@ import {
   type SharedMaterials,
 } from "../venueKit";
 import { ACOUSTIC_TILE_TOP_Y } from "./shell";
-import { clockFaceTexture, posterTexture } from "./textures";
+import { clockFaceTexture, posterTexture, wasteIconTexture } from "./textures";
 
 export function buildProps(group: THREE.Group, mats: SharedMaterials): void {
   buildWcBlock(group, mats);
@@ -23,14 +25,14 @@ export function buildProps(group: THREE.Group, mats: SharedMaterials): void {
   buildLongTable(group, mats);
 }
 
-/** WC room beside the stage: charcoal walls up to the tile line, EXIT door facing the audience, wall clock, bin. */
+/** WC room beside the stage: charcoal walls up to the tile line, door facing the audience, wall clock, bin. */
 function buildWcBlock(group: THREE.Group, mats: SharedMaterials): void {
   const b = KB_WC_BLOCK;
   const w = b.maxX - b.minX;
   const d = b.maxZ - b.minZ;
   addBox(group, w, ACOUSTIC_TILE_TOP_Y, 0.2, mats.wallCharcoal, (b.minX + b.maxX) / 2, ACOUSTIC_TILE_TOP_Y / 2, b.maxZ - 0.1, "wc-wall-front");
   addBox(group, 0.2, ACOUSTIC_TILE_TOP_Y, d, mats.wallCharcoal, b.minX + 0.1, ACOUSTIC_TILE_TOP_Y / 2, (b.minZ + b.maxZ) / 2, "wc-wall-side");
-  createExitDoor(group, 5.5, 0, b.maxZ + 0.1, 0, "wc-door");
+  createExitDoor(group, 5.5, 0, b.maxZ + 0.1, 0, "wc-door", { illuminatedSign: false });
 
   const clock = new THREE.Mesh(
     new THREE.CylinderGeometry(0.18, 0.18, 0.04, 24),
@@ -41,9 +43,86 @@ function buildWcBlock(group: THREE.Group, mats: SharedMaterials): void {
   clock.name = "wall-clock";
   group.add(clock);
 
-  const binMat = new THREE.MeshStandardMaterial({ color: 0x24262b, roughness: 0.6 });
-  const bin = addBox(group, 0.45, 0.9, 0.45, binMat, 6.15, 0.45, -7.05, "bin");
-  addBox(bin, 0.47, 0.06, 0.47, mats.matteBlack, 0, 0.45, 0, "", false);
+  buildWheelieBin(group);
+}
+
+/** 240L wheelie bin outside the WC door, lid flipped open toward the wall. */
+function buildWheelieBin(group: THREE.Group): void {
+  const bin = new THREE.Group();
+  bin.name = "bin";
+  bin.position.set(6.18, 0, -6.95);
+  bin.rotation.y = 0.35;
+
+  const plastic = new THREE.MeshStandardMaterial({
+    color: 0x3c3c42,
+    roughness: 0.5,
+    side: THREE.DoubleSide,
+    emissive: 0x16161a,
+  });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x1a1a1e, roughness: 0.85 });
+  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1c1c20, roughness: 0.8, emissive: 0x080808 });
+  const rim = new THREE.MeshStandardMaterial({ color: 0x4a4a52, roughness: 0.4, emissive: 0x121214 });
+
+  const bodyW = 0.56;
+  const bodyD = 0.70;
+  const wall = 0.035;
+  const bodyBottom = 0.10;
+  const bodyTop = 0.98;
+  const bodyH = bodyTop - bodyBottom;
+  const bodyY = (bodyBottom + bodyTop) / 2;
+
+  const body = new THREE.Group();
+  body.name = "bin-body";
+  addBox(body, bodyW, 0.05, bodyD, plastic, 0, bodyBottom + 0.025, 0);
+  addBox(body, bodyW, bodyH, wall, plastic, 0, bodyY, bodyD / 2 - wall / 2);
+  addBox(body, bodyW, bodyH, wall, plastic, 0, bodyY, -bodyD / 2 + wall / 2);
+  addBox(body, wall, bodyH, bodyD - wall * 2, plastic, bodyW / 2 - wall / 2, bodyY, 0);
+  addBox(body, wall, bodyH, bodyD - wall * 2, plastic, -bodyW / 2 + wall / 2, bodyY, 0);
+  addBox(body, bodyW - wall * 2, 0.02, bodyD - wall * 2, dark, 0, bodyBottom + 0.06, 0, "", false);
+  addBox(body, bodyW, 0.03, wall, rim, 0, bodyTop - 0.015, bodyD / 2 - wall / 2, "", false);
+  addBox(body, bodyW, 0.03, wall, rim, 0, bodyTop - 0.015, -bodyD / 2 + wall / 2, "", false);
+  addBox(body, wall, 0.03, bodyD - wall * 2, rim, bodyW / 2 - wall / 2, bodyTop - 0.015, 0, "", false);
+  addBox(body, wall, 0.03, bodyD - wall * 2, rim, -bodyW / 2 + wall / 2, bodyTop - 0.015, 0, "", false);
+  bin.add(body);
+
+  const lid = new THREE.Group();
+  lid.name = "bin-lid";
+  lid.position.set(0, bodyTop, -bodyD / 2);
+  lid.rotation.x = -2.15;
+  addBox(lid, 0.58, 0.045, 0.72, plastic, 0, 0.02, 0.36);
+  addBox(lid, 0.16, 0.04, 0.08, plastic, 0, 0.055, 0.64, "", false);
+  bin.add(lid);
+
+  addBox(bin, 0.50, 0.04, 0.04, plastic, 0, 1.0, -bodyD / 2 - 0.01, "", false);
+
+  for (const x of [-0.22, 0.22]) {
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.05, 16), wheelMat);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(x, 0.1, -0.22);
+    wheel.name = "bin-wheel";
+    bin.add(wheel);
+  }
+
+  const badge = new THREE.Mesh(
+    new THREE.CircleGeometry(0.11, 24),
+    new THREE.MeshStandardMaterial({
+      map: wasteIconTexture(),
+      color: 0xffffff,
+      emissive: 0xffffff,
+      emissiveMap: wasteIconTexture(),
+      emissiveIntensity: 0.35,
+      roughness: 0.45,
+      transparent: true,
+    }),
+  );
+  badge.position.set(0, 0.62, bodyD / 2 + 0.005);
+  bin.add(badge);
+
+  const fill = new THREE.PointLight(0xc8c4bc, 2.4, 2.4, 2);
+  fill.position.set(0.15, 1.35, 0.45);
+  bin.add(fill);
+
+  group.add(bin);
 }
 
 /** Glossy black ornate throne chair against the +X wall. */
@@ -122,36 +201,31 @@ function buildFridge(group: THREE.Group, mats: SharedMaterials): void {
   group.add(fridge);
 }
 
-/** Long sound desk centred on the rear wall, facing the stage: mixer, two monitors and two office chairs behind it. */
+/** Long FOH desk on the rear wall, stage-left of the glass room: sound mixer (-X), lighting console (+X), one chair behind each. */
 function buildPaDesk(group: THREE.Group, mats: SharedMaterials): void {
   const desk = new THREE.Group();
   desk.name = "pa-desk";
-  desk.position.set(0, 0, 3.0);
+  desk.position.set(KB_PA_CX, 0, KB_PA_DESK_Z);
   const top = new THREE.MeshStandardMaterial({ color: 0x141418, roughness: 0.6 });
   addBox(desk, 4.0, 0.05, 0.8, top, 0, 0.78, 0);
   for (const [x, z] of [[-1.9, -0.35], [1.9, -0.35], [-1.9, 0.35], [1.9, 0.35]] as const) {
     addBox(desk, 0.05, 0.76, 0.05, mats.steel, x, 0.38, z, "", false);
   }
-  const mixer = addBox(desk, 1.4, 0.12, 0.6, mats.fixtureBlack, -0.7, 0.86, 0, "pa-mixer");
-  const faders = new THREE.Mesh(new THREE.PlaneGeometry(1.36, 0.56), new THREE.MeshStandardMaterial({ map: consoleMixerTexture(), emissive: 0x222222 }));
-  faders.rotation.x = -Math.PI / 2;
-  faders.position.set(0, 0.061, 0);
-  mixer.add(faders);
-  const screen = new THREE.MeshStandardMaterial({ color: 0x0b1c33, emissive: 0x2f6fff, emissiveIntensity: 0.9 });
-  for (const x of [0.6, 1.2]) {
-    addBox(desk, 0.5, 0.32, 0.04, screen, x, 1.25, -0.3, "monitor");
-    addBox(desk, 0.06, 0.28, 0.06, mats.fixtureBlack, x, 1.0, -0.3, "", false);
-  }
-  const chairMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1f, roughness: 0.8 });
-  for (const x of [-0.8, 0.9]) {
-    addBox(desk, 0.5, 0.08, 0.5, chairMat, x, 0.48, 0.75, "office-chair");
-    addBox(desk, 0.5, 0.5, 0.08, chairMat, x, 0.78, 0.98, "", false);
-    addBox(desk, 0.06, 0.44, 0.06, mats.steel, x, 0.22, 0.75, "", false);
+  const mixer = buildSoundMixer();
+  mixer.position.set(KB_FOH_CHAIRS[0].x - KB_PA_CX, 0.805, 0);
+  desk.add(mixer);
+  const lightingConsole = buildLightingConsole();
+  lightingConsole.position.set(KB_FOH_CHAIRS[1].x - KB_PA_CX, 0.805, 0);
+  desk.add(lightingConsole);
+  for (const { x, z } of KB_FOH_CHAIRS) {
+    const chair = buildFohChair();
+    chair.position.set(x - KB_PA_CX, 0, z - KB_PA_DESK_Z);
+    desk.add(chair);
   }
   group.add(desk);
 }
 
-/** Black fabric barrier boards on steel feet, running along the front of the PA desk and closing its -X end. */
+/** Black fabric barrier boards on steel feet, running along the front of the PA desk and closing its +X end. */
 function buildPaBarrier(group: THREE.Group, mats: SharedMaterials): void {
   const barrier = new THREE.Group();
   barrier.name = "pa-barrier";
@@ -161,9 +235,11 @@ function buildPaBarrier(group: THREE.Group, mats: SharedMaterials): void {
     addBox(barrier, w, height, d, fabric, x, height / 2, z);
     addBox(barrier, w + 0.04, 0.03, d + 0.04, mats.steel, x, height + 0.015, z, "", false);
   };
-  board(4.7, 0.08, 0, 2.45); // Front, audience side
-  board(0.08, 1.5, -2.35, 3.2); // -X end, back to the rear wall
-  for (const [x, z] of [[-1.6, 2.45], [0, 2.45], [1.6, 2.45], [-2.35, 3.0]] as const) {
+  const frontZ = KB_PA_DESK_Z - 0.55;
+  // Front, audience side: runs from 1.6 m before the desk centre to the +X end board, leaving the -X end open as the way in
+  board(3.95, 0.08, KB_PA_CX + 0.375, frontZ);
+  board(0.08, KB_REAR_WALL_Z - (frontZ - 0.05), KB_PA_CX + 2.35, (frontZ - 0.05 + KB_REAR_WALL_Z) / 2); // +X end, back to the rear wall
+  for (const [x, z] of [[KB_PA_CX - 1.3, frontZ], [KB_PA_CX, frontZ], [KB_PA_CX + 1.6, frontZ], [KB_PA_CX + 2.35, 3.0]] as const) {
     addBox(barrier, 0.05, 0.04, 0.5, mats.steel, x, 0.02, z, "", false);
   }
   group.add(barrier);
@@ -171,7 +247,7 @@ function buildPaBarrier(group: THREE.Group, mats: SharedMaterials): void {
 
 /** Three live posters on the acoustic rear wall. */
 function buildPosters(group: THREE.Group): void {
-  [0.8, 1.6, 2.4].forEach((x, i) => {
+  [KB_PA_CX + 0.8, KB_PA_CX + 1.6, KB_PA_CX + 2.4].forEach((x, i) => {
     const poster = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.85), new THREE.MeshStandardMaterial({ map: posterTexture(i), roughness: 0.9 }));
     poster.position.set(x, 1.9, KB_REAR_WALL_Z - 0.07);
     poster.rotation.y = Math.PI;

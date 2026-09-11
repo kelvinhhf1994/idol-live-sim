@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { moveCircleWithCollisions } from "../core/collision";
+import { groundHeightAt, isOnSeat } from "../core/venueGround";
 import { formationPoints } from "../show/formation";
 import { MAX_IDOL_COUNT } from "../show/idolMembers";
 import {
   NGAU_TAU_KOK_VENUE,
   NTK_BACK_WALL_Z,
   NTK_ENTRANCE_Z,
+  NTK_FOH_CHAIRS,
   NTK_GLASS_Z,
   NTK_MALL_END_Z,
+  NTK_PA_BOOTH_MAX_Z,
+  NTK_PA_BOOTH_MIN_Z,
+  NTK_PA_PLATFORM_HEIGHT,
 } from "./venue";
 
 describe("NGAU_TAU_KOK_VENUE configuration", () => {
@@ -90,6 +96,27 @@ describe("NGAU_TAU_KOK_VENUE configuration", () => {
     expect(step1).toBeDefined();
     expect(step2).toBeDefined();
     expect(step1!.bounds.minZ).toBeGreaterThan(step2!.bounds.minZ);
+  });
+
+  it("seats two FOH chairs on the booth platform, reachable from the side stairs", () => {
+    const seats = NGAU_TAU_KOK_VENUE.platforms.filter((p) => p.seat);
+    expect(seats).toHaveLength(2);
+    for (const seat of seats) {
+      expect(seat.height).toBe(NTK_PA_PLATFORM_HEIGHT);
+      expect(seat.sitYaw).toBe(0); // Facing the stage
+      expect(seat.bounds.minZ).toBeGreaterThan(NTK_PA_BOOTH_MIN_Z + 0.9); // Behind the desk collider
+      expect(seat.bounds.maxZ).toBeLessThan(NTK_PA_BOOTH_MAX_Z);
+    }
+    // From the top stair tread, step -X onto the platform and slide along behind the desk to each chair
+    const topTreadZ = NTK_PA_BOOTH_MIN_Z + 1.9; // Inside the railing gap beside the stairs
+    for (const chair of NTK_FOH_CHAIRS) {
+      const onto = moveCircleWithCollisions({ x: -3.2, z: topTreadZ }, { x: chair.x + 3.2, z: 0 }, 0.34, NGAU_TAU_KOK_VENUE.colliders, NTK_PA_PLATFORM_HEIGHT);
+      expect(onto.x).toBeCloseTo(chair.x, 5);
+      const toChair = moveCircleWithCollisions({ x: chair.x, z: topTreadZ }, { x: 0, z: chair.z - topTreadZ }, 0.34, NGAU_TAU_KOK_VENUE.colliders, NTK_PA_PLATFORM_HEIGHT);
+      expect(toChair.z).toBeCloseTo(chair.z, 5);
+      expect(groundHeightAt(NGAU_TAU_KOK_VENUE, toChair.x, toChair.z, NTK_PA_PLATFORM_HEIGHT)).toBe(NTK_PA_PLATFORM_HEIGHT);
+      expect(isOnSeat(NGAU_TAU_KOK_VENUE, toChair.x, toChair.z, NTK_PA_PLATFORM_HEIGHT)).toBe(true);
+    }
   });
 
   it("leaves door gaps in the entrance wall and the glass shopfront", () => {

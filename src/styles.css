@@ -407,9 +407,57 @@ button {
   left: max(20px, env(safe-area-inset-left));
   z-index: 2;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   pointer-events: auto;
+}
+
+.hud-topleft__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.teleport-select {
+  position: relative;
+}
+
+.teleport-select[hidden] {
+  display: none;
+}
+
+.teleport-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+  max-height: 40vh;
+  overflow: auto;
+  border: 1px solid rgba(214, 255, 63, 0.42);
+  padding: 6px;
+  background: rgba(12, 9, 22, 0.94);
+  backdrop-filter: blur(12px);
+}
+
+.teleport-panel[hidden] {
+  display: none;
+}
+
+.teleport-chip {
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 6px 10px;
+  background: rgba(8, 6, 17, 0.6);
+  color: #f9f6ef;
+  font: 700 12px / 1.2 "Barlow Condensed", sans-serif;
+  letter-spacing: 0.04em;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .house-lights-button {
@@ -664,7 +712,8 @@ button {
 /* Pit group — hardcore metallic ring around JUMP */
 .mosh-button,
 .two-step-button,
-.lift-button {
+.lift-button,
+.ft-special-button {
   width: var(--pit-size);
   height: var(--pit-size);
   min-width: 44px;
@@ -711,6 +760,36 @@ button {
   box-shadow:
     0 3px 0 rgba(12, 40, 90, 0.55),
     0 0 18px rgba(63, 140, 255, 0.42);
+}
+
+/* Kowloon Bay only — fleece-white sheep ride */
+.ft-special-button {
+  right: 172px;
+  bottom: 8px;
+  border-color: rgba(255, 236, 205, 0.95);
+  color: #5a3a1c;
+  font-size: 9px;
+  line-height: 1.05;
+  text-align: center;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.85), transparent 48%),
+    linear-gradient(145deg, #fff4e3 0%, #e6c391 100%);
+  box-shadow:
+    0 3px 0 rgba(120, 80, 30, 0.45),
+    0 0 18px rgba(255, 224, 170, 0.5);
+}
+
+.ft-special-button.is-active,
+.ft-special-button[aria-pressed="true"] {
+  border-color: #fff;
+  color: #3a2208;
+  background:
+    radial-gradient(circle at 30% 25%, #fff, transparent 50%),
+    linear-gradient(145deg, #ffe9b8 0%, #ffb648 100%);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.45),
+    0 0 28px rgba(255, 190, 90, 0.75);
+  transform: scale(0.92);
 }
 
 /* Cheer group — soft sakura / aqua / gold capsules on outer arc */
@@ -859,6 +938,9 @@ button {
 }
 
 .mosh-button:disabled,
+.lift-button:disabled,
+.two-step-button:disabled,
+.jump-point-button:disabled,
 .jump-button:disabled {
   opacity: 0.38;
 }
@@ -1225,6 +1307,11 @@ html[data-video-panel-state="minimized"] .hud-actions {
     bottom: 100px;
   }
 
+  .ft-special-button {
+    right: 124px;
+    bottom: 4px;
+  }
+
   /* Cheer arc — outer ring well clear of pit buttons */
   .cheer-button--point {
     right: 4px;
@@ -1380,6 +1467,11 @@ html[data-video-panel-state="minimized"] .hud-actions {
 
   .mosh-button {
     right: 60px;
+    bottom: 4px;
+  }
+
+  .ft-special-button {
+    right: 150px;
     bottom: 4px;
   }
 

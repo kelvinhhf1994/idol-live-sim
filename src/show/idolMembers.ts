@@ -2,6 +2,8 @@ import type { IdolMember } from "../scene/createChibiIdol";
 
 /** Stage capacity of the idol line-up; the HUD lets the player show 1..MAX. */
 export const MAX_IDOL_COUNT = 12;
+/** Members on stage when a venue first loads (a five-idol V). */
+export const DEFAULT_IDOL_COUNT = 5;
 
 /**
  * Twelve-member Little Weekend atlas. Shared slim-chibi skeleton; members

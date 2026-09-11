@@ -1,12 +1,18 @@
 import * as THREE from "three";
-import type { VenueDefinition } from "../config/venue";
+import { GENERIC_FOH_CHAIRS, GENERIC_FOH_DESK, type VenueDefinition } from "../config/venue";
 import type { Aabb2 } from "../core/collision";
 import { createNgauTauKokVenue } from "./createNgauTauKokVenue";
 import { createKowloonBayVenue } from "./kowloonBay/createKowloonBayVenue";
+import { addBox as addKitBox, buildFohChair, buildLightingConsole, buildSoundMixer } from "./venueKit";
 
 export interface HouseLights {
   readonly enabled: boolean;
   setEnabled(enabled: boolean): void;
+}
+
+/** Per-frame driver for a venue's moving / colour-changing rig. */
+export interface LightShow {
+  update(elapsed: number): void;
 }
 
 export interface VenueBuild {
@@ -16,6 +22,8 @@ export interface VenueBuild {
   stageLights: THREE.SpotLight[];
   /** Venue-level work lights (ceiling panels + ambient). Absent when a venue has no house-light toggle. */
   houseLights?: HouseLights;
+  /** Animated rig (sweeping heads, drifting colours). Absent for venues with a static rig. */
+  lightShow?: LightShow;
   /** Decorative dummies and standees that mosh / lift can knock. */
   knockableProps: THREE.Object3D[];
 }
@@ -162,10 +170,30 @@ export function createVenue(definition: VenueDefinition): VenueBuild {
   barLabel.rotation.y = -Math.PI / 2;
   group.add(barLabel);
 
-  addBox(3.25, 1.5, 2.2, black, -6.85, 0.75, 3);
-  addBox(2.75, 0.12, 0.72, violet, -6.85, 1.56, 2.75, false);
+  // FOH desk: sound mixer and lighting console on a black table, an operator chair behind each
+  const fohDesk = new THREE.Group();
+  fohDesk.name = "foh-desk";
+  fohDesk.position.set(GENERIC_FOH_DESK.x, 0, GENERIC_FOH_DESK.z);
+  const deskTopY = 0.78;
+  addKitBox(fohDesk, GENERIC_FOH_DESK.width, 0.05, GENERIC_FOH_DESK.depth, black, 0, deskTopY - 0.025, 0);
+  addKitBox(fohDesk, GENERIC_FOH_DESK.width - 0.1, 0.03, 0.05, violet, 0, deskTopY - 0.06, -GENERIC_FOH_DESK.depth / 2 + 0.03, "", false);
+  for (const [lx, lz] of [[-1.4, -0.3], [1.4, -0.3], [-1.4, 0.3], [1.4, 0.3]] as const) {
+    addKitBox(fohDesk, 0.06, deskTopY - 0.05, 0.06, steel, lx, (deskTopY - 0.05) / 2, lz, "", false);
+  }
+  const mixer = buildSoundMixer();
+  mixer.position.set(GENERIC_FOH_CHAIRS[0].x - GENERIC_FOH_DESK.x, deskTopY, 0);
+  fohDesk.add(mixer);
+  const lightingConsole = buildLightingConsole();
+  lightingConsole.position.set(GENERIC_FOH_CHAIRS[1].x - GENERIC_FOH_DESK.x, deskTopY, 0);
+  fohDesk.add(lightingConsole);
+  for (const { x, z } of GENERIC_FOH_CHAIRS) {
+    const chair = buildFohChair();
+    chair.position.set(x - GENERIC_FOH_DESK.x, 0, z - GENERIC_FOH_DESK.z);
+    fohDesk.add(chair);
+  }
+  group.add(fohDesk);
   const soundLabel = labelPlane("FOH", "#8b5cf6", "#ffffff", 1.4, 0.55);
-  soundLabel.position.set(-6.85, 2.35, 1.88);
+  soundLabel.position.set(GENERIC_FOH_DESK.x, 2.35, GENERIC_FOH_DESK.z - 0.7);
   group.add(soundLabel);
 
   addBox(0.5, 5.4, 0.24, black, -8.75, 2.7, -9.75);

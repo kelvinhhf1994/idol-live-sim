@@ -66,7 +66,7 @@ export function buildShell(group: THREE.Group, mats: SharedMaterials): void {
   hang(WIDTH, KB_HALL_CEILING, CENTER_X, KB_HALL_CEILING / 2, KB_BACK_WALL_Z + 0.05, 0, "curtain-back");
   const rightLen = KB_REAR_WALL_Z - KB_WC_BLOCK.maxZ;
   hang(rightLen, KB_HALL_CEILING, KB_MAX_X - 0.05, KB_HALL_CEILING / 2, KB_WC_BLOCK.maxZ + rightLen / 2, -Math.PI / 2, "curtain-right");
-  hang(DEPTH, KB_HALL_CEILING, KB_MIN_X + 0.05, KB_HALL_CEILING / 2, CENTER_Z, Math.PI / 2, "curtain-left");
+  // Left shell is the backstage outer wall; the interior liner paints that room white.
   const upper = KB_HALL_CEILING - ACOUSTIC_TILE_TOP_Y;
   hang(WIDTH, upper, CENTER_X, ACOUSTIC_TILE_TOP_Y + upper / 2, KB_REAR_WALL_Z - 0.05, Math.PI, "curtain-rear");
 

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { GENERIC_VENUE } from "../config/venue";
+import { GENERIC_VENUE, KB_DECK_HEIGHT, KOWLOON_BAY_VENUE } from "../config/venue";
 import { createLowPolyPerson, GLOW_STICK_HEIGHT } from "../scene/createCharacter";
 import { calculateWorldMovement, getMoshPose, PlayerController } from "./PlayerController";
 import { DEFAULT_GAME_SETTINGS } from "./gameSettings";
@@ -287,6 +287,75 @@ describe("PlayerController", () => {
     player.startTwoStep();
     expect(player.twoStepActive).toBe(true);
     expect(player.liftActive).toBe(false);
+  });
+
+  it("moves at lift speed while riding the FT Special sheep", () => {
+    const player = new PlayerController(createLowPolyPerson(), GENERIC_VENUE, []);
+    const walkingPlayer = new PlayerController(createLowPolyPerson(), GENERIC_VENUE, []);
+
+    player.setRideActive(true);
+    player.update(0.1, { x: 1, y: 0 }, 0, true);
+    walkingPlayer.update(0.1, { x: 1, y: 0 }, 0, true);
+
+    expect(player.rideActive).toBe(true);
+    expect(player.position.x - GENERIC_VENUE.spawn.x).toBeCloseTo(
+      (walkingPlayer.position.x - GENERIC_VENUE.spawn.x) * DEFAULT_GAME_SETTINGS.liftSpeed,
+    );
+  });
+
+  it("shows the sheep under the rig only while riding and seats the rider on it", () => {
+    const rig = createLowPolyPerson();
+    const player = new PlayerController(rig, GENERIC_VENUE, []);
+    const mount = player.group.getObjectByName("sheep-mount");
+
+    expect(mount).toBeDefined();
+    expect(mount?.visible).toBe(false);
+
+    player.setRideActive(true);
+    for (let frame = 0; frame < 60; frame += 1) player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    expect(mount?.visible).toBe(true);
+    expect(rig.body.position.y).toBeGreaterThan(0.05);
+    expect(rig.leftHip.rotation.z).toBeLessThan(-0.2);
+    expect(rig.rightHip.rotation.z).toBeGreaterThan(0.2);
+
+    player.setRideActive(false);
+    for (let frame = 0; frame < 60; frame += 1) player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    expect(player.rideActive).toBe(false);
+    expect(mount?.visible).toBe(false);
+    expect(rig.body.position.y).toBeLessThan(0.01);
+  });
+
+  it("keeps riding mutually exclusive with mosh and lift", () => {
+    const player = new PlayerController(createLowPolyPerson(), GENERIC_VENUE, []);
+
+    player.startMosh();
+    player.setLiftActive(true);
+    player.setRideActive(true);
+    expect(player.rideActive).toBe(true);
+    expect(player.moshActive).toBe(false);
+    expect(player.liftActive).toBe(false);
+
+    // Let the lift supporters finish their exit before the pit action re-check.
+    for (let frame = 0; frame < 30; frame += 1) player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    player.startMosh();
+    expect(player.rideActive).toBe(false);
+    expect(player.moshActive).toBe(true);
+  });
+
+  it("carries the sheep along through a jump while riding", () => {
+    const rig = createLowPolyPerson();
+    const player = new PlayerController(rig, GENERIC_VENUE, []);
+    const mount = player.group.getObjectByName("sheep-mount");
+
+    player.setRideActive(true);
+    for (let frame = 0; frame < 30; frame += 1) player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    expect(player.jump()).toBe(true);
+    for (let frame = 0; frame < 10; frame += 1) player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+
+    expect(player.position.y).toBeGreaterThan(GENERIC_VENUE.spawn.y);
+    expect(player.rideActive).toBe(true);
+    expect(mount?.visible).toBe(true);
+    expect(rig.body.position.y).toBeGreaterThan(0.05);
   });
 
   it("runs a released jump-point through landing without changing yaw or knockback mode", () => {
@@ -818,5 +887,25 @@ describe("PlayerController", () => {
 
     player.debugPlaceOnGround(0, 0, 3.0);
     expect(player.position.y).toBe(3.0);
+  });
+});
+
+describe("PlayerController sitting", () => {
+  it("sits when idle on the glass-room sofa", () => {
+    const player = new PlayerController(createLowPolyPerson(), KOWLOON_BAY_VENUE, KOWLOON_BAY_VENUE.colliders);
+    player.debugPlaceOnGround(-6.1, 3.3, KB_DECK_HEIGHT);
+    for (let frame = 0; frame < 20; frame += 1) {
+      player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    }
+    expect(player.rig.leftKnee.rotation.x).toBeLessThan(-0.6);
+  });
+
+  it("turns 180 so the sit faces away from the glass-sofa backrest", () => {
+    const player = new PlayerController(createLowPolyPerson(), KOWLOON_BAY_VENUE, KOWLOON_BAY_VENUE.colliders);
+    player.teleportTo(-6.1, KB_DECK_HEIGHT, 3.3, Math.PI);
+    for (let frame = 0; frame < 45; frame += 1) {
+      player.update(1 / 60, { x: 0, y: 0 }, 0, true);
+    }
+    expect(Math.abs(player.group.rotation.y)).toBeLessThan(0.2);
   });
 });

@@ -40,9 +40,18 @@
 
       <section id="hud" class="hud" hidden>
         <div class="hud-topleft">
-          <div class="venue-badge">
-            <span class="venue-badge__dot"></span>
-            <span id="venue-badge-text">LIVE · NEON BACKSTAGE</span>
+          <div class="hud-topleft__stack">
+            <div class="venue-badge">
+              <span class="venue-badge__dot"></span>
+              <span id="venue-badge-text">LIVE · NEON BACKSTAGE</span>
+            </div>
+            <div id="teleport-select" class="teleport-select" hidden>
+              <button id="teleport-button" class="icon-button house-lights-button" type="button" aria-label="傳送" aria-expanded="false">
+                <span class="icon-button__icon">⌖</span>
+                <span id="teleport-label">傳送</span>
+              </button>
+              <div id="teleport-panel" class="teleport-panel" hidden role="listbox" aria-label="傳送位置"></div>
+            </div>
           </div>
           <button id="house-lights-button" class="icon-button house-lights-button" type="button" aria-label="開燈" aria-pressed="false" hidden>
             <span class="icon-button__icon">💡</span>
@@ -51,7 +60,7 @@
           <div class="idol-count">
             <button id="idol-count-button" class="icon-button house-lights-button" type="button" aria-label="偶像人數" aria-expanded="false">
               <span class="icon-button__icon">👥</span>
-              <span id="idol-count-label">偶像 12 人</span>
+              <span id="idol-count-label">偶像 5 人</span>
             </button>
             <div id="idol-count-panel" class="idol-count-panel" hidden role="listbox" aria-label="偶像人數"></div>
           </div>
@@ -83,6 +92,7 @@
             <button id="two-step-button" class="two-step-button" type="button" aria-pressed="false">2STEP</button>
             <button id="lift-button" class="lift-button" type="button" aria-pressed="false">LIFT</button>
             <button id="mosh-button" class="mosh-button" type="button" aria-pressed="false" aria-disabled="false">MOSH</button>
+            <button id="ft-special-button" class="ft-special-button" type="button" aria-pressed="false" aria-label="FT Special 騎羊" hidden>FT<br>Special</button>
           </div>
           <button id="jump-button" class="jump-button" type="button">跳躍</button>
         </div>

@@ -2,6 +2,7 @@ import * as THREE from "three";
 import {
   NTK_BACK_WALL_Z,
   NTK_ENTRANCE_Z,
+  NTK_FOH_CHAIRS,
   NTK_GLASS_Z,
   NTK_HALL_CEILING,
   NTK_MALL_END_Z,
@@ -13,7 +14,9 @@ import {
   addBox,
   addMovingHead,
   addParCan,
-  consoleMixerTexture,
+  buildFohChair,
+  buildLightingConsole,
+  buildSoundMixer,
   createAtmosphericCrowd,
   createBeamCones,
   createExitDoor,
@@ -584,48 +587,32 @@ function buildPaBooth(group: THREE.Group, mats: SharedMaterials): void {
   // the rear edge backs onto the entrance wall so it gets no railing
   createNgauTauKokBoothRailings(paGroup, steel, -6.6, -3.6, 1.0, 4.6, platformHeight, 2.4, 4.2);
 
-  // Red console desk casing / structure
+  // Red console desk casing / structure, wide enough for the mixer and the lighting desk side by side
   const redConsoleMat = material(0xd82035, 0.45, 0.25);
   const redTrimMat = material(0xff2f50, 0.3, 0.2, 0xff2f50);
 
   const deskY = platformHeight + 0.425;
-  addBox(paGroup, 2.0, 0.85, 0.85, redConsoleMat, -5.1, deskY, 1.5, "pa-desk", true);
+  const deskWidth = 2.7;
+  addBox(paGroup, deskWidth, 0.85, 0.85, redConsoleMat, -5.1, deskY, 1.5, "pa-desk", true);
 
-  addBox(paGroup, 2.04, 0.05, 0.04, redTrimMat, -5.1, platformHeight + 0.85, 1.07, "pa-red-trim", false);
-  addBox(paGroup, 1.96, 0.76, 0.03, redConsoleMat, -5.1, deskY - 0.03, 1.06, "", false);
-  addBox(paGroup, 0.04, 0.87, 0.87, redTrimMat, -6.12, deskY, 1.5, "", false);
-  addBox(paGroup, 0.04, 0.87, 0.87, redTrimMat, -4.08, deskY, 1.5, "", false);
+  addBox(paGroup, deskWidth + 0.04, 0.05, 0.04, redTrimMat, -5.1, platformHeight + 0.85, 1.07, "pa-red-trim", false);
+  addBox(paGroup, deskWidth - 0.04, 0.76, 0.03, redConsoleMat, -5.1, deskY - 0.03, 1.06, "", false);
+  addBox(paGroup, 0.04, 0.87, 0.87, redTrimMat, -5.1 - deskWidth / 2 - 0.02, deskY, 1.5, "", false);
+  addBox(paGroup, 0.04, 0.87, 0.87, redTrimMat, -5.1 + deskWidth / 2 + 0.02, deskY, 1.5, "", false);
 
-  // Mixing surface (black mixer with LED channels tilted towards operator standing at z = 2.2)
-  const mixerMat = new THREE.MeshStandardMaterial({
-    map: consoleMixerTexture(),
-    roughness: 0.6,
-    emissive: 0xffffff,
-    emissiveMap: consoleMixerTexture(),
-    emissiveIntensity: 0.35,
-  });
-  const mixerMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.65), mixerMat);
-  mixerMesh.position.set(-5.3, platformHeight + 0.87, 1.55);
-  mixerMesh.rotation.x = -Math.PI / 2 + 0.12;
-  paGroup.add(mixerMesh);
-
-  // Prominent RED hardware unit / audio interface on the right side of the desk
-  const redGearMat = new THREE.MeshStandardMaterial({ color: 0xff1e38, roughness: 0.3, metalness: 0.7 });
-  addBox(paGroup, 0.42, 0.14, 0.28, redGearMat, -4.35, platformHeight + 0.92, 1.55, "pa-red-gear", true);
-  addBox(paGroup, 0.04, 0.04, 0.04, steel, -4.5, platformHeight + 0.94, 1.69, "", false);
-  addBox(paGroup, 0.04, 0.04, 0.04, steel, -4.35, platformHeight + 0.94, 1.69, "", false);
-  addBox(paGroup, 0.04, 0.04, 0.04, steel, -4.2, platformHeight + 0.94, 1.69, "", false);
-
-  // Monitors on desk (angled towards operator who is looking at stage)
-  const monitorMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc });
-  const mon1 = addBox(paGroup, 0.52, 0.32, 0.03, monitorMat, -5.5, platformHeight + 1.1, 1.25, "pa-mon1", false);
-  const mon2 = addBox(paGroup, 0.52, 0.32, 0.03, monitorMat, -4.8, platformHeight + 1.1, 1.25, "pa-mon2", false);
-  mon1.rotation.y = -0.16;
-  mon2.rotation.y = 0.16;
-
-  // High stool behind the desk for the sound engineer
-  addBox(paGroup, 0.45, 0.08, 0.45, material(0x2a2833, 0.6), -5.1, platformHeight + 0.65, 2.4, "", true);
-  addBox(paGroup, 0.08, 0.65, 0.08, steel, -5.1, platformHeight + 0.325, 2.4, "", false);
+  // Sound mixer (left) and lighting console (right) on the desk top, each with an operator chair behind it
+  const deskTop = platformHeight + 0.85;
+  const mixer = buildSoundMixer();
+  mixer.position.set(NTK_FOH_CHAIRS[0].x, deskTop, 1.5);
+  paGroup.add(mixer);
+  const lightingConsole = buildLightingConsole();
+  lightingConsole.position.set(NTK_FOH_CHAIRS[1].x, deskTop, 1.5);
+  paGroup.add(lightingConsole);
+  for (const { x, z } of NTK_FOH_CHAIRS) {
+    const chair = buildFohChair();
+    chair.position.set(x, platformHeight, z - paGroup.position.z);
+    paGroup.add(chair);
+  }
 
   // FOH / PA PANEL signage
   const fohSign = labelPlane("FOH / PA PANEL\n控制台", "#121217", "#00e5ff", 1.8, 0.65);

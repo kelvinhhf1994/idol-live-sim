@@ -18,7 +18,7 @@ Detail level matches 牛頭角: props, textures, rigging, house-light toggle, at
 
 Audience faces -Z; +X is the audience's right hand; the stage sits against the back wall at -Z.
 Backstage, entrance vestibule and the glass room are therefore on the -X side (the performer's right
-when facing the audience); the WC door and fridge are on the +X side; the PA desk is centred on the rear wall.
+when facing the audience); the WC door and fridge are on the +X side; the PA desk sits stage-left of the glass room.
 
 | Photo | What it tells us |
 |---|---|
@@ -35,44 +35,53 @@ when facing the audience); the WC door and fridge are on the +X side; the PA des
   proper is x ∈ [-4.5, 6.5]; the 4 m backstage block (x ∈ [-8.5, -4.5]) sits outside it (revised
   2026-09-11: the backstage was widened from 2 m to 4 m by pushing the outer wall out).
 - Ceiling 7.6 (牛頭角 is 6.2). Pipe grid 5.6–6.4. Fluorescent battens hang at 6.0.
-- Stage: x ∈ [-4.5, 4.5], z ∈ [-11.0, -8.0], height 1.0 (about half a door). Performer line y 1.0,
-  z -9.5, spacing 0.78.
-- Truss walkway ("花道"): x ∈ [-3.5, 3.5], z ∈ [-8.0, -7.4], height 0.8, built from two tiers of
-  box-section lighting truss (thick main chords, verticals, diagonals and cross ties, end plates) with a
-  diamond plate top; 5 wedge monitors on top facing the stage. End stairs: x ∈ [-4.4, -3.5] and
-  [3.5, 4.4], four 0.3 m treads at 0.2 / 0.4 / 0.6 / 0.8 (z from -6.8 to -8.0) with handrails, clear of
-  the partition (x = -4.5) and the WC block (x = 4.5). Stepping from 0.8 onto the 1.0 stage is allowed. `crowdBarrier` is only consumed
+- Stage: x ∈ [-4.5, 4.5], z ∈ [-11.0, -8.0], height 1.5 (revised 2026-09-11 from 1.0, ×1.5). Performer
+  line y 1.5, z -9.5, spacing 0.78.
+- Truss walkway ("花道"): x ∈ [-3.5, 3.5], z ∈ [-8.0, -7.4], height 1.3 (one 0.2 step below the
+  stage), built from three stacked tiers of box-section lighting truss (thick main chords, verticals,
+  diagonals and cross ties, end plates) with a diamond plate top; 5 wedge monitors on top facing the
+  stage. End stairs: x ∈ [-4.4, -3.5] and [3.5, 4.4], six 0.3 m treads (≈0.217 rise, z from -6.2 to
+  -8.0) with handrails, clear of the partition (x = -4.5) and the WC block (x = 4.5). Stepping from 1.3
+  onto the 1.5 stage is allowed. Because a climber's circle (r 0.34) already overlaps the stage collider
+  while on the top tread, the stage collider's `maxY` is capped just below the second-to-top tread. `crowdBarrier` is only consumed
   by scene builders for rendering, so here it is the walkway footprint and `stage.ts` renders it.
 - WC block (+X, beside stage): x ∈ [4.5, 6.5], z ∈ [-11.0, -7.6]. Door on its +Z face at x ≈ 5.5 with
   EXIT sign and wall clock above; bin beside it.
 - Backstage partition (black curtain wall): x = -4.5, from z = -8.0 to z = 1.2, with a curtain gap at
   z ∈ [-0.2, 1.0] (the backstage entrance, just stage-ward of the vestibule). Over the stage wing
-  (z ∈ [-11.0, -8.0]) the curtain only hangs from deck level (3.0) up, backed by a `minY: 3.0`
+  (z ∈ [-11.0, -8.0]) the curtain only hangs from deck level (3.5) up, backed by a `minY: 3.5`
   collider, so 1/F walks from the landing onto the stage while the 2/F deck stays walled off.
 - Backstage corridor: x ∈ [-8.5, -4.5], z ∈ [-11.0, 1.2].
-  - Landing: x ∈ [-8.5, -4.5], z ∈ [-11.0, -9.0] at stage height 1.0; its +X edge is open onto the
-    stage wing (no step).
-  - Lower stairs: x ∈ [-6.4, -4.8], five 0.3 m treads rising in -Z from z = -7.5 to z = -9.0 at
-    0.2 / 0.4 / 0.6 / 0.8 / 1.0, handrails both sides.
+  - Landing: x ∈ [-8.5, -4.5], z ∈ [-11.0, -9.0] at stage height 1.5; its +X edge is open onto the
+    stage wing (no step). The landing and the tall (> 1.2) top treads of the lower stair read as
+    ceilings to the Y-aware ground, so both carry height-capped colliders that stop corridor-floor
+    players walking into them while letting climbers through.
+  - Lower stairs: x ∈ [-7.7, -6.1] (clear of the vanity tables and dressing booths), seven 0.26 m
+    treads rising in -Z from z = -7.18 to z = -9.0 at ≈0.214 per step up to 1.5, handrails both sides.
   - 2/F stairs: from the landing, z ∈ [-11.0, -10.0], ten 0.28 m treads rising in -X from x = -5.5
-    to x = -8.3, heights 1.2, 1.4 … 3.0. Steel stringers, handrail on the open (+Z) side. The
+    to x = -8.3, heights 1.7, 1.9 … 3.5. Steel stringers, handrail on the open (+Z) side. The
     stairwell above it is open (no deck); the deck rail leaves only the top tread open.
   - Road cases along the -X wall (x ∈ [-8.5, -8.0]).
   - Work lighting: cool-white fluorescent battens with point lights on both floors (under the deck
-    soffit over the landing, corridor and vestibule; hung over the deck corridor; under the glass
-    room roof). Their emissive material and lights are permanently on and independent of the hall's
+    soffit over the corridor and vestibule; hung in the open stairwell over the landing; hung over the
+    deck corridor; under the glass room roof). Their emissive material and lights are permanently on and independent of the hall's
     house/show lights.
-- 2/F deck, height 3.0: corridor deck x ∈ [-8.5, -4.5], z ∈ [-10.0, 1.2]; glass room deck
-  x ∈ [-8.5, -3.0], z ∈ [1.2, 4.0].
-- Entrance vestibule (ground floor under the glass room): x ∈ [-8.5, -3.0], z ∈ [1.2, 4.0]. Doorway
+- 2/F deck, height 3.5 (raised from 3.0 with the stage so the landing keeps 2 m of headroom): corridor
+  deck x ∈ [-8.5, -4.5], z ∈ [-10.0, 1.2]; glass room deck
+  x ∈ [-8.5, -1.5], z ∈ [1.2, 4.0].
+- Entrance vestibule (ground floor under the glass room): x ∈ [-8.5, -1.5], z ∈ [1.2, 4.0]. Doorway
   1.2 m wide on its +X face at z ∈ [1.6, 2.8], opening into the rear of the hall toward the PA desk
-  (revised 2026-09-11 from the -Z face after the first visual review). The -Z face is solid tiles.
+  (revised 2026-09-11 from the -Z face after the first visual review; widened into the hall so the
+  stage-facing glass is ~3 m). The -Z face is solid tiles.
   Closed outer door with 入口 sign on the +Z wall. Folding chairs inside. Player spawn (-4.6, 0, 2.2),
   yaw -π/2 (facing +X through the doorway).
-- Glass room (2/F over the vestibule): floor-to-ceiling glazing (落地玻璃) on the -Z face over the hall
-  side (x ∈ [-4.5, -3.0], facing the stage) and on the +X face (facing the hall); the -Z side over
-  the backstage corridor is open so the corridor deck walks straight in; thin dark frames; room
-  ceiling at 5.8. Shelves inside lined with instanced colourful plushie boxes; white work light (see backstage lighting).
+- Glass room (2/F over the vestibule): one single floor-to-ceiling pane (落地玻璃) on the -Z face over
+  the hall side (x ∈ [-4.5, -1.5], facing the stage) and one on the +X face (facing the hall); the
+  -Z side over the backstage corridor is open so the corridor deck walks straight in; thin edge
+  frames only, no centre mullion; glass runs up to the hall ceiling (7.6). Shelves inside lined with instanced colourful
+  plushie boxes; white work light (see backstage lighting).
+- PA desk: 4 m wide, centred at x = 1.6 (stage-left of the widened glass room), with barrier boards
+  along its front and -X end.
 - The partition curtain at x = -4.5 runs floor to ceiling, so the 2/F corridor deck is walled off from
   the hall (no balustrade, no jumping down); only the stairwell edge has a rail.
 - Audience floor: x ∈ [-4.5, 6.5], z ∈ [-7.4, 4.0] minus the vestibule. The rigging pipe grid covers
@@ -92,12 +101,12 @@ callers and venues are unaffected.
 - Each stair tread is a platform; 0.2 m steps are within the existing 0.22 step tolerance.
 - A player on the deck cannot walk off its edge: the drop to 0 exceeds 0.22 so movement is blocked.
   Deck edges therefore act as railings without extra colliders.
-- The 1/F wall between the backstage corridor and the vestibule carries `maxY: 3.0` so the corridor
+- The 1/F wall between the backstage corridor and the vestibule carries `maxY: 3.5` so the corridor
   deck walks over it into the glass room. Walls that exist only on 2/F (over the curtain gap and over
-  the vestibule doorway) carry `minY: 3.0`: `Aabb2.minY` is ignored while `baseY < minY`, so ground
+  the vestibule doorway) carry `minY: 3.5`: `Aabb2.minY` is ignored while `baseY < minY`, so ground
   floor players pass underneath while 2/F players (walking or jumping) are blocked.
 
-Jumping under the deck never reaches `3.0 - 0.22`, so a ground player cannot pop onto the deck.
+Jumping under the deck never reaches `3.5 - 0.22`, so a ground player cannot pop onto the deck.
 
 ## Venue definition (`src/config/venue.ts`)
 
@@ -106,7 +115,7 @@ Jumping under the deck never reaches `3.0 - 0.22`, so a ground player cannot pop
   footprint, spawn in the vestibule, colliders for walls / WC block / partition (with the gap) /
   vestibule walls (doorway gap) / truss walkway / stage / fridge / PA desk + barrier / throne / ladder /
   tables, platforms for stage, truss walkway, both stair runs, 2/F deck and glass room deck,
-  `crowdBarrier` = the truss walkway footprint with `maxY: 0.8` (also listed in `colliders` so a
+  `crowdBarrier` = the truss walkway footprint with `maxY: 1.3` (also listed in `colliders` so a
   ground player cannot clip into the truss), 15 audience points on the floor,
   light colours, `youtubeVideoId` same as 牛頭角.
 
@@ -154,7 +163,7 @@ remain the regression check. `createVenue.ts` dispatches `"kowloon-bay"` to the 
   3.0; is blocked at the deck edge; walls with `maxY: 3.0` do not block a player standing at 3.0.
 - `src/config/kowloonBayVenue.test.ts`: consecutive stair treads differ by ≤ 0.22 and abut; the top
   tread abuts the deck; spawn lies inside the vestibule, inside bounds and outside every collider; the
-  backstage gap and the doorway are only walled on 2/F (`minY: 3.0`); the partition is full height;
+  backstage gap and the doorway are only walled on 2/F (`minY: 3.5`); the partition is full height;
   performer line lies inside the stage; all audience points are on the audience floor.
 - `src/scene/kowloonBay/createKowloonBayVenue.test.ts`: builds under Node (canvas textures guard on
   `typeof document`), returns `houseLights` (default off) and colliders equal to the definition,
