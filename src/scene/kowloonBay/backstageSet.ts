@@ -37,7 +37,7 @@ export function buildBackstageSet(group: THREE.Group, mats: SharedMaterials): vo
   buildMaimai(set, mats);
   for (const box of KB_CLAW_MACHINES) buildClawMachine(set, mats, box);
   buildArcadeFridge(set, mats);
-  buildSnackCabinet(set, mats);
+  buildSnackCabinet(set);
   group.add(set);
 }
 
@@ -339,7 +339,7 @@ function buildArcadeFridge(parent: THREE.Group, mats: SharedMaterials): void {
 }
 
 /** Open snack cabinet: four shelves of colourful packs, facing the corridor. */
-function buildSnackCabinet(parent: THREE.Group, mats: SharedMaterials): void {
+function buildSnackCabinet(parent: THREE.Group): void {
   const { cx, cz, w, d } = cxz(KB_SNACK_CABINET);
   const cabinet = new THREE.Group();
   cabinet.name = "snack-cabinet";
