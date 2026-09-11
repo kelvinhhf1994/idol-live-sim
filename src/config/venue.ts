@@ -323,11 +323,11 @@ export const KOWLOON_BAY_VENUE: VenueDefinition = {
     { minX: 5.5, maxX: 6.3, minZ: -6.4, maxZ: -5.6, maxY: 1.6 }, // Black throne chair
     { minX: 5.7, maxX: 6.4, minZ: -5.2, maxZ: -4.4, maxY: 2.0 }, // Aluminium ladder with plushie net
     { minX: 5.6, maxX: 6.4, minZ: 3.1, maxZ: 3.9 }, // Coca-Cola fridge in the rear corner
-    { minX: 2.9, maxX: 5.1, minZ: 1.4, maxZ: 2.3, maxY: 1.0 }, // Black sofa on the +X side
     { minX: 4.3, maxX: 6.1, minZ: 2.4, maxZ: 3.0, maxY: 0.8 }, // Long white folding table in front of the fridge
-    // Rear wall centre
+    // Rear wall centre: PA desk with black barrier boards along its front and -X end
     { minX: -2.0, maxX: 2.0, minZ: 2.6, maxZ: 3.4, maxY: 1.2 }, // Long PA desk centred on the rear wall, facing the stage
-    { minX: -2.9, maxX: -2.2, minZ: 3.0, maxZ: 3.6, maxY: 0.9 }, // Ticket table with lamp beside the doorway
+    { minX: -2.4, maxX: 2.4, minZ: 2.4, maxZ: 2.5, maxY: 1.1 }, // Barrier in front of the desk
+    { minX: -2.4, maxX: -2.3, minZ: 2.4, maxZ: 4.0, maxY: 1.1 }, // Barrier closing the -X end
   ],
   crowdBarrier: kbWalkway,
   platforms: [

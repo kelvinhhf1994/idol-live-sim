@@ -31,7 +31,7 @@ export function createKowloonBayVenue(definition: VenueDefinition): VenueBuild {
   buildStage(group, mats, stagePlatform, definition.crowdBarrier);
   buildBackstage(group, mats);
   const tubeMaterial = buildRigging(group, mats, definition.show.lightColors, fakeBeams);
-  const knockables = buildProps(group, mats);
+  buildProps(group, mats);
   const crowd = createAtmosphericCrowd(group, CROWD_POSITIONS);
   const stageLights = createShowLights(group, definition.show.lightColors, stagePlatform, fakeBeams, showOnly);
   const houseLights = createHouseLights(group, { panelMaterial: tubeMaterial }, showOnly);
@@ -42,6 +42,6 @@ export function createKowloonBayVenue(definition: VenueDefinition): VenueBuild {
     audiencePoints: definition.show.audiencePoints.map(([x, y, z]) => new THREE.Vector3(x, y, z)),
     stageLights,
     houseLights,
-    knockableProps: [...crowd, ...knockables],
+    knockableProps: crowd,
   };
 }

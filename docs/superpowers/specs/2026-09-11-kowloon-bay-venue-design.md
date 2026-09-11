@@ -18,7 +18,7 @@ Detail level matches 牛頭角: props, textures, rigging, house-light toggle, at
 
 Audience faces -Z; +X is the audience's right hand; the stage sits against the back wall at -Z.
 Backstage, entrance vestibule and the glass room are therefore on the -X side (the performer's right
-when facing the audience); the WC door, fridge, PA desk and sofa are on the +X side.
+when facing the audience); the WC door and fridge are on the +X side; the PA desk is centred on the rear wall.
 
 | Photo | What it tells us |
 |---|---|
@@ -26,7 +26,7 @@ when facing the audience); the WC door, fridge, PA desk and sofa are on the +X s
 | Stage facing audience | Rear wall covered in grey acoustic foam tiles with posters; Coca-Cola fridge and PA desk on +X rear; glass room with plushies on 2/F at -X rear with the entrance doorway underneath it; hung line-array on upper -X. |
 | The right side (+X) | WC door + clock near the stage, metal panel, bin, black ornate throne chair, aluminium ladder with net bag of plushies, fridge at the rear corner. |
 | The left side (-X) | Glass room (two large panes + a corner pane) above the entrance doorway; white ticket table with lamp beside the doorway; folding chairs visible inside the vestibule. |
-| Panel / entrance photos | PA desk with mixer and two monitors, black sofa in front facing the stage, cables on the acoustic wall. |
+| Panel / entrance photos | Long PA desk with mixer and two monitors, black fabric barrier boards along its front and -X end, cables on the acoustic wall. (Sofa, ticket table, red pony and the people in the photos are deliberately not modelled.) |
 | Floor plan | Stage at the bottom; stairs at both ends of the stage front; "stair to stage" and "to 2/F" on the backstage side next to the stage; backstage corridor along the side wall up to the entrance box at the rear corner; fridge and panel at the opposite rear corner; WC beside the stage on the other side. |
 
 ## Dimensions (metres)
@@ -89,7 +89,7 @@ Jumping under the deck never reaches `3.0 - 0.22`, so a ground player cannot pop
 - `builderId` union gains `"kowloon-bay"`.
 - `KOWLOON_BAY_VENUE`: id `kowloon-bay-live-house-01`, name `九龍灣`, bounds and camera bounds from the
   footprint, spawn in the vestibule, colliders for walls / WC block / partition (with the gap) /
-  vestibule walls (doorway gap) / truss walkway / stage / fridge / PA desk / sofa / throne / ladder /
+  vestibule walls (doorway gap) / truss walkway / stage / fridge / PA desk + barrier / throne / ladder /
   tables, platforms for stage, truss walkway, both stair runs, 2/F deck and glass room deck,
   `crowdBarrier` = the truss walkway footprint with `maxY: 0.6` (also listed in `colliders` so a
   ground player cannot clip into the truss), 15 audience points on the floor,
@@ -110,8 +110,8 @@ New folder `src/scene/kowloonBay/` so the builder does not become another 2300-l
 - `backstage.ts` – partition curtains with gap, corridor, stage stairs, 2/F stairs with stringers and
   handrails, corridor deck with stairwell rail, glass room (frames, glass, shelves, plushie boxes, light).
 - `props.ts` – WC door with EXIT sign and clock, bin, throne chair, ladder with plushie net, fridge,
-  PA desk with mixer and monitors, sofa, posters, long white folding table, ticket table with lamp,
-  red pony (knockable), folding chairs in the vestibule.
+  PA desk with mixer and monitors, barrier boards, posters, long white folding table, folding chairs in
+  the vestibule.
 - `textures.ts` – new canvas textures: acoustic foam tiles, plushie box faces, wall clock, 入口 sign,
   poster wall variant.
 
@@ -142,7 +142,7 @@ remain the regression check. `createVenue.ts` dispatches `"kowloon-bay"` to the 
   performer line lies inside the stage; all audience points are on the audience floor.
 - `src/scene/kowloonBay/createKowloonBayVenue.test.ts`: builds under Node (canvas textures guard on
   `typeof document`), returns `houseLights` (default off) and colliders equal to the definition,
-  `knockableProps` includes the pony.
+  `knockableProps` are the crowd dummies.
 - Existing 牛頭角 tests keep passing after the `venueKit` extraction.
 - e2e (`e2e/desktop.spec.ts`): `?station=kowloon-bay` enters, HUD shows 九龍灣 badge and house-light
   button, screenshot captured for visual comparison with the photos.

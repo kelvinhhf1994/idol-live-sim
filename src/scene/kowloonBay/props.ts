@@ -12,16 +12,15 @@ import {
 import { ACOUSTIC_TILE_TOP_Y } from "./shell";
 import { clockFaceTexture, posterTexture } from "./textures";
 
-export function buildProps(group: THREE.Group, mats: SharedMaterials): THREE.Object3D[] {
+export function buildProps(group: THREE.Group, mats: SharedMaterials): void {
   buildWcBlock(group, mats);
   buildThrone(group);
   buildLadder(group);
   buildFridge(group, mats);
   buildPaDesk(group, mats);
-  buildSofa(group);
+  buildPaBarrier(group, mats);
   buildPosters(group);
-  buildTables(group, mats);
-  return [buildRedPony(group)];
+  buildLongTable(group, mats);
 }
 
 /** WC room beside the stage: charcoal walls up to the tile line, EXIT door facing the audience, wall clock, bin. */
@@ -152,16 +151,22 @@ function buildPaDesk(group: THREE.Group, mats: SharedMaterials): void {
   group.add(desk);
 }
 
-/** Black fabric sofa facing the stage on the +X side of the rear floor. */
-function buildSofa(group: THREE.Group): void {
-  const sofa = new THREE.Group();
-  sofa.name = "sofa";
-  sofa.position.set(4.0, 0, 1.85);
+/** Black fabric barrier boards on steel feet, running along the front of the PA desk and closing its -X end. */
+function buildPaBarrier(group: THREE.Group, mats: SharedMaterials): void {
+  const barrier = new THREE.Group();
+  barrier.name = "pa-barrier";
   const fabric = new THREE.MeshStandardMaterial({ color: 0x0e0e11, roughness: 0.98 });
-  addBox(sofa, 2.2, 0.42, 0.9, fabric, 0, 0.21, 0);
-  addBox(sofa, 2.2, 0.5, 0.2, fabric, 0, 0.67, 0.35);
-  for (const x of [-1.05, 1.05]) addBox(sofa, 0.1, 0.25, 0.9, fabric, x, 0.54, 0);
-  group.add(sofa);
+  const height = 1.1;
+  const board = (w: number, d: number, x: number, z: number) => {
+    addBox(barrier, w, height, d, fabric, x, height / 2, z);
+    addBox(barrier, w + 0.04, 0.03, d + 0.04, mats.steel, x, height + 0.015, z, "", false);
+  };
+  board(4.7, 0.08, 0, 2.45); // Front, audience side
+  board(0.08, 1.5, -2.35, 3.2); // -X end, back to the rear wall
+  for (const [x, z] of [[-1.6, 2.45], [0, 2.45], [1.6, 2.45], [-2.35, 3.0]] as const) {
+    addBox(barrier, 0.05, 0.04, 0.5, mats.steel, x, 0.02, z, "", false);
+  }
+  group.add(barrier);
 }
 
 /** Three live posters on the acoustic rear wall. */
@@ -175,8 +180,8 @@ function buildPosters(group: THREE.Group): void {
   });
 }
 
-/** Long white folding table in front of the fridge and the small ticket table with a lamp beside the doorway. */
-function buildTables(group: THREE.Group, mats: SharedMaterials): void {
+/** Long white folding table in front of the fridge. */
+function buildLongTable(group: THREE.Group, mats: SharedMaterials): void {
   const white = new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.6 });
   const longTable = new THREE.Group();
   longTable.name = "long-table";
@@ -186,37 +191,4 @@ function buildTables(group: THREE.Group, mats: SharedMaterials): void {
     addBox(longTable, 0.04, 0.72, 0.04, mats.steel, x, 0.36, z, "", false);
   }
   group.add(longTable);
-
-  const ticket = new THREE.Group();
-  ticket.name = "ticket-table";
-  ticket.position.set(-2.55, 0, 3.3);
-  addBox(ticket, 0.7, 0.04, 0.5, white, 0, 0.86, 0);
-  for (const [x, z] of [[-0.3, -0.2], [0.3, -0.2], [-0.3, 0.2], [0.3, 0.2]] as const) {
-    addBox(ticket, 0.03, 0.84, 0.03, mats.steel, x, 0.42, z, "", false);
-  }
-  addBox(ticket, 0.03, 0.5, 0.03, mats.steel, 0.2, 1.13, -0.1, "", false);
-  const shadeMat = new THREE.MeshStandardMaterial({ color: 0xfff4dc, emissive: 0xffe2b0, emissiveIntensity: 1.2 });
-  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.18, 12, 1, true), shadeMat);
-  shade.position.set(0.2, 1.42, -0.1);
-  ticket.add(shade);
-  const lamp = new THREE.PointLight(0xffe2b0, 3, 3, 1.8);
-  lamp.position.set(0.2, 1.35, -0.1);
-  ticket.add(lamp);
-  group.add(ticket);
-}
-
-/** Small red rocking-pony plush left on the floor; knockable by mosh / lift. */
-function buildRedPony(group: THREE.Group): THREE.Object3D {
-  const pony = new THREE.Group();
-  pony.name = "red-pony";
-  pony.position.set(0.6, 0, 2.6);
-  const red = new THREE.MeshStandardMaterial({ color: 0xd42a2a, roughness: 0.9 });
-  addBox(pony, 0.5, 0.28, 0.24, red, 0, 0.45, 0);
-  addBox(pony, 0.24, 0.26, 0.2, red, 0.32, 0.62, 0);
-  addBox(pony, 0.06, 0.12, 0.06, red, 0.4, 0.78, 0, "", false);
-  for (const [x, z] of [[-0.18, -0.08], [0.18, -0.08], [-0.18, 0.08], [0.18, 0.08]] as const) {
-    addBox(pony, 0.08, 0.32, 0.08, red, x, 0.16, z, "", false);
-  }
-  group.add(pony);
-  return pony;
 }
