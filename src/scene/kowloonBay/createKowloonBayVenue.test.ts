@@ -113,4 +113,36 @@ describe("createVenue for Kowloon Bay", () => {
     houseLights.setEnabled(false);
     expect(tubeMat.emissiveIntensity).toBe(0);
   });
+
+  it("dresses the hall with the props seen in the photos", () => {
+    const build = createVenue(KOWLOON_BAY_VENUE);
+    const names = collectNames(build.group);
+    for (const expected of [
+      "wc-door",
+      "wall-clock",
+      "bin",
+      "throne-chair",
+      "ladder",
+      "fridge",
+      "pa-desk",
+      "pa-mixer",
+      "sofa",
+      "poster",
+      "long-table",
+      "ticket-table",
+      "red-pony",
+    ]) {
+      expect(names, expected).toContain(expected);
+    }
+    const door = build.group.getObjectByName("wc-door")!;
+    expect(door.position.z).toBeCloseTo(-7.5, 5);
+    expect(door.rotation.y).toBeCloseTo(0, 5); // faces the audience (+Z)
+  });
+
+  it("exposes the crowd dummies and the red pony as knockable props", () => {
+    const build = createVenue(KOWLOON_BAY_VENUE);
+    const names = build.knockableProps.map((prop) => prop.name);
+    expect(names.filter((name) => name === "crowd-dummy").length).toBeGreaterThan(8);
+    expect(names).toContain("red-pony");
+  });
 });
