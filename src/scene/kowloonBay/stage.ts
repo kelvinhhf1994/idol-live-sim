@@ -74,7 +74,7 @@ function buildLedWall(group: THREE.Group, mats: SharedMaterials, stageHeight: nu
     false,
   );
 
-  if (typeof document !== "undefined" && import.meta.env.MODE !== "test") {
+  if (typeof document !== "undefined") {
     new THREE.TextureLoader().load(LED_ART_URL, (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace;
       ledMaterial.map = tex;
