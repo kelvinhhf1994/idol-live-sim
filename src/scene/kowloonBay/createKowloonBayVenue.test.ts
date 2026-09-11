@@ -45,4 +45,43 @@ describe("createVenue for Kowloon Bay", () => {
     expect(ceiling.position.y).toBeGreaterThanOrEqual(KB_HALL_CEILING);
     expect(KB_HALL_CEILING).toBeGreaterThan(KB_DECK_HEIGHT + 3);
   });
+
+  it("builds the two-storey backstage: partition, both stairs, deck, vestibule and glass room", () => {
+    const build = createVenue(KOWLOON_BAY_VENUE);
+    const names = collectNames(build.group);
+    for (const expected of [
+      "backstage-partition",
+      "backstage-gap-valance",
+      "stage-stairs",
+      "upper-stairs",
+      "upper-deck",
+      "deck-corridor",
+      "deck-glass-room",
+      "deck-rail",
+      "entrance-vestibule",
+      "entrance-doorway",
+      "vestibule-light",
+      "glass-room",
+      "glass-pane",
+      "glass-room-roof",
+      "plushie-shelf",
+      "plushie-boxes",
+      "road-case",
+    ]) {
+      expect(names, expected).toContain(expected);
+    }
+  });
+
+  it("puts the deck top at exactly the 2/F walking height", () => {
+    const build = createVenue(KOWLOON_BAY_VENUE);
+    build.group.updateMatrixWorld(true);
+    const corridor = build.group.getObjectByName("deck-corridor")!;
+    const box = new THREE.Box3().setFromObject(corridor);
+    expect(box.max.y).toBeCloseTo(KB_DECK_HEIGHT, 5);
+    expect(box.max.x).toBeCloseTo(-4.5, 5);
+    const panes = build.group.children.flatMap((c) =>
+      c.name === "glass-room" ? c.children.filter((p) => p.name === "glass-pane") : [],
+    );
+    expect(panes.length).toBe(4);
+  });
 });

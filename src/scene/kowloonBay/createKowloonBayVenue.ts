@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { VenueDefinition } from "../../config/venue";
 import type { VenueBuild } from "../createVenue";
 import { createAtmosphericCrowd, createHouseLights, createSharedMaterials, type FakeBeam } from "../venueKit";
+import { buildBackstage } from "./backstage";
 import { buildShell } from "./shell";
 import { buildStage } from "./stage";
 
@@ -26,6 +27,7 @@ export function createKowloonBayVenue(definition: VenueDefinition): VenueBuild {
 
   buildShell(group, mats);
   buildStage(group, mats, stagePlatform, definition.crowdBarrier);
+  buildBackstage(group, mats);
   const crowd = createAtmosphericCrowd(group, CROWD_POSITIONS);
 
   // TEMPORARY until the rigging task: bare placeholder lights so the build is renderable
