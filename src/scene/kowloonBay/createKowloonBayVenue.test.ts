@@ -84,4 +84,33 @@ describe("createVenue for Kowloon Bay", () => {
     );
     expect(panes.length).toBe(4);
   });
+
+  it("rigs the tall ceiling with pipes, fluorescents, moving heads, PARs and line arrays", () => {
+    const build = createVenue(KOWLOON_BAY_VENUE);
+    const names = collectNames(build.group);
+    for (const expected of ["pipe-grid", "fluorescent-tube", "moving-head", "par-can", "line-array", "light-beams"]) {
+      expect(names, expected).toContain(expected);
+    }
+    expect(names.filter((n) => n === "moving-head").length).toBeGreaterThanOrEqual(10);
+    expect(names.filter((n) => n === "fluorescent-tube").length).toBe(8);
+  });
+
+  it("defaults to house lights off and lights the fluorescent tubes when enabled", () => {
+    const build = createVenue(KOWLOON_BAY_VENUE);
+    const houseLights = build.houseLights!;
+    const tube = build.group.getObjectByName("fluorescent-tube") as THREE.Mesh;
+    const tubeMat = tube.material as THREE.MeshStandardMaterial;
+    const beams = build.group.getObjectByName("light-beams")!;
+
+    expect(houseLights.enabled).toBe(false);
+    expect(tubeMat.emissiveIntensity).toBe(0);
+    expect(beams.visible).toBe(true);
+
+    houseLights.setEnabled(true);
+    expect(tubeMat.emissiveIntensity).toBeGreaterThan(1);
+    expect(beams.visible).toBe(false);
+
+    houseLights.setEnabled(false);
+    expect(tubeMat.emissiveIntensity).toBe(0);
+  });
 });

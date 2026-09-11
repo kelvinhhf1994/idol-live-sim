@@ -3,6 +3,7 @@ import type { VenueDefinition } from "../../config/venue";
 import type { VenueBuild } from "../createVenue";
 import { createAtmosphericCrowd, createHouseLights, createSharedMaterials, type FakeBeam } from "../venueKit";
 import { buildBackstage } from "./backstage";
+import { buildRigging, createShowLights } from "./rigging";
 import { buildShell } from "./shell";
 import { buildStage } from "./stage";
 
@@ -28,18 +29,9 @@ export function createKowloonBayVenue(definition: VenueDefinition): VenueBuild {
   buildShell(group, mats);
   buildStage(group, mats, stagePlatform, definition.crowdBarrier);
   buildBackstage(group, mats);
+  const tubeMaterial = buildRigging(group, mats, definition.show.lightColors, fakeBeams);
   const crowd = createAtmosphericCrowd(group, CROWD_POSITIONS);
-
-  // TEMPORARY until the rigging task: bare placeholder lights so the build is renderable
-  const tubeMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2a30, emissive: 0xffffff, emissiveIntensity: 0 });
-  const stageLights = definition.show.lightColors.map((color, idx) => {
-    const light = new THREE.SpotLight(color, 55, 20, 0.42, 0.6, 1.2);
-    light.position.set(-3.6 + idx * 2.4, 5.2, -7.0);
-    light.target.position.set(-3.0 + idx * 2.0, 0.8, -9.5);
-    group.add(light, light.target);
-    return light;
-  });
-  void fakeBeams;
+  const stageLights = createShowLights(group, definition.show.lightColors, stagePlatform, fakeBeams, showOnly);
   const houseLights = createHouseLights(group, { panelMaterial: tubeMaterial }, showOnly);
 
   return {
