@@ -123,28 +123,28 @@ function buildFridge(group: THREE.Group, mats: SharedMaterials): void {
   group.add(fridge);
 }
 
-/** Sound desk facing the stage with a mixer, two monitors and two office chairs behind it. */
+/** Long sound desk centred on the rear wall, facing the stage: mixer, two monitors and two office chairs behind it. */
 function buildPaDesk(group: THREE.Group, mats: SharedMaterials): void {
   const desk = new THREE.Group();
   desk.name = "pa-desk";
-  desk.position.set(4.0, 0, 3.0);
+  desk.position.set(0, 0, 3.0);
   const top = new THREE.MeshStandardMaterial({ color: 0x141418, roughness: 0.6 });
-  addBox(desk, 2.8, 0.05, 0.8, top, 0, 0.78, 0);
-  for (const [x, z] of [[-1.3, -0.35], [1.3, -0.35], [-1.3, 0.35], [1.3, 0.35]] as const) {
+  addBox(desk, 4.0, 0.05, 0.8, top, 0, 0.78, 0);
+  for (const [x, z] of [[-1.9, -0.35], [1.9, -0.35], [-1.9, 0.35], [1.9, 0.35]] as const) {
     addBox(desk, 0.05, 0.76, 0.05, mats.steel, x, 0.38, z, "", false);
   }
-  const mixer = addBox(desk, 1.4, 0.12, 0.6, mats.fixtureBlack, -0.4, 0.86, 0, "pa-mixer");
+  const mixer = addBox(desk, 1.4, 0.12, 0.6, mats.fixtureBlack, -0.7, 0.86, 0, "pa-mixer");
   const faders = new THREE.Mesh(new THREE.PlaneGeometry(1.36, 0.56), new THREE.MeshStandardMaterial({ map: consoleMixerTexture(), emissive: 0x222222 }));
   faders.rotation.x = -Math.PI / 2;
   faders.position.set(0, 0.061, 0);
   mixer.add(faders);
   const screen = new THREE.MeshStandardMaterial({ color: 0x0b1c33, emissive: 0x2f6fff, emissiveIntensity: 0.9 });
-  for (const x of [0.6, 1.1]) {
+  for (const x of [0.6, 1.2]) {
     addBox(desk, 0.5, 0.32, 0.04, screen, x, 1.25, -0.3, "monitor");
     addBox(desk, 0.06, 0.28, 0.06, mats.fixtureBlack, x, 1.0, -0.3, "", false);
   }
   const chairMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1f, roughness: 0.8 });
-  for (const x of [-0.6, 0.8]) {
+  for (const x of [-0.8, 0.9]) {
     addBox(desk, 0.5, 0.08, 0.5, chairMat, x, 0.48, 0.75, "office-chair");
     addBox(desk, 0.5, 0.5, 0.08, chairMat, x, 0.78, 0.98, "", false);
     addBox(desk, 0.06, 0.44, 0.06, mats.steel, x, 0.22, 0.75, "", false);
@@ -152,7 +152,7 @@ function buildPaDesk(group: THREE.Group, mats: SharedMaterials): void {
   group.add(desk);
 }
 
-/** Black fabric sofa facing the stage in front of the desk. */
+/** Black fabric sofa facing the stage on the +X side of the rear floor. */
 function buildSofa(group: THREE.Group): void {
   const sofa = new THREE.Group();
   sofa.name = "sofa";
@@ -175,12 +175,12 @@ function buildPosters(group: THREE.Group): void {
   });
 }
 
-/** Long white folding table at the rear and the small ticket table with a lamp beside the doorway. */
+/** Long white folding table in front of the fridge and the small ticket table with a lamp beside the doorway. */
 function buildTables(group: THREE.Group, mats: SharedMaterials): void {
   const white = new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.6 });
   const longTable = new THREE.Group();
   longTable.name = "long-table";
-  longTable.position.set(-1.0, 0, 3.5);
+  longTable.position.set(5.2, 0, 2.7);
   addBox(longTable, 1.8, 0.04, 0.6, white, 0, 0.74, 0);
   for (const [x, z] of [[-0.8, -0.25], [0.8, -0.25], [-0.8, 0.25], [0.8, 0.25]] as const) {
     addBox(longTable, 0.04, 0.72, 0.04, mats.steel, x, 0.36, z, "", false);
