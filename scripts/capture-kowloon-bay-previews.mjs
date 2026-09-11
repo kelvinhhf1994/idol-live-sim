@@ -4,7 +4,7 @@ import { chromium } from "playwright";
 // Writes preview-kb-*.png to the repo root (gitignored).
 // Camera yaw: forward = (-sin yaw, -cos yaw); yaw 0 looks toward -Z (the stage).
 const SHOTS = [
-  { name: "vestibule-doorway", place: [-3.8, 2.8, 0], view: [0.0, -0.02] },
+  { name: "vestibule-doorway", place: [-4.6, 2.2, 0], view: [-Math.PI / 2, -0.02] },
   { name: "audience-facing-stage", place: [1.0, 1.0, 0], view: [0.0, -0.05] },
   // Stand at the +X end of the performer line so the idols do not block the lens
   { name: "stage-facing-audience", place: [2.8, -9.6, 0.7], view: [Math.PI - 0.35, -0.04] },
@@ -35,7 +35,7 @@ async function run() {
       window.__liveHouseDebug?.placePlayer(place[0], place[1], place[2]);
       window.__liveHouseDebug?.setCameraView(view[0], view[1]);
     }, shot);
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(1500);
     await page.screenshot({ path: `preview-kb-${shot.name}.png` });
     console.log(`captured preview-kb-${shot.name}.png`);
   }

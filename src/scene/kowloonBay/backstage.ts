@@ -4,6 +4,7 @@ import {
   KB_DECK_HEIGHT,
   KB_DECK_MIN_Z,
   KB_DOORWAY,
+  KB_HALL_CEILING,
   KB_MIN_X,
   KB_PARTITION_X,
   KB_STAGE_FRONT_Z,
@@ -15,9 +16,11 @@ import { addBox, labelPlane, pleatedCurtainTexture, setInstanceTransform, type I
 import { acousticTileMaterial } from "./shell";
 import { PLUSHIE_COLORS } from "./textures";
 
-const GLASS_SILL_Y = KB_DECK_HEIGHT + 0.9;
-const GLASS_TOP_Y = GLASS_SILL_Y + 1.5;
 const GLASS_ROOM_CEILING_Y = 5.8;
+// Floor-to-ceiling glazing: a low kick plate at deck level and a slim header under the roof
+const GLASS_SILL_Y = KB_DECK_HEIGHT + 0.08;
+const GLASS_TOP_Y = GLASS_ROOM_CEILING_Y - 0.12;
+const GAP_HEAD_Y = 2.5; // Clear height of the idol gap through the partition curtain
 const STEP_MAT = new THREE.MeshStandardMaterial({ color: 0x1a1920, roughness: 0.75, metalness: 0.2 });
 const STRIPE_MAT = new THREE.MeshStandardMaterial({ color: 0xffee00, emissive: 0xffaa00, emissiveIntensity: 0.8, roughness: 0.3 });
 
@@ -31,25 +34,26 @@ export function buildBackstage(group: THREE.Group, mats: SharedMaterials): void 
   buildRoadCases(group, mats);
 }
 
-/** Black curtain wall between the hall and the corridor, with the idol entrance gap in front of the vestibule. */
+/** Floor-to-ceiling black curtain wall between the hall and the two-storey backstage, with the idol gap on 1/F. */
 function buildPartition(group: THREE.Group, mats: SharedMaterials): void {
   const partition = new THREE.Group();
   partition.name = "backstage-partition";
   const curtainMat = new THREE.MeshStandardMaterial({ map: pleatedCurtainTexture(), roughness: 0.95, side: THREE.DoubleSide });
-  const hang = (minZ: number, maxZ: number) => {
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(maxZ - minZ, KB_DECK_HEIGHT), curtainMat);
-    mesh.position.set(KB_PARTITION_X, KB_DECK_HEIGHT / 2, (minZ + maxZ) / 2);
+  const hang = (minZ: number, maxZ: number, y0: number, y1: number) => {
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(maxZ - minZ, y1 - y0), curtainMat);
+    mesh.position.set(KB_PARTITION_X, (y0 + y1) / 2, (minZ + maxZ) / 2);
     mesh.rotation.y = Math.PI / 2;
     partition.add(mesh);
   };
-  hang(KB_STAGE_FRONT_Z, KB_BACKSTAGE_GAP.minZ);
-  hang(KB_BACKSTAGE_GAP.maxZ, KB_VESTIBULE.minZ);
+  hang(KB_STAGE_FRONT_Z, KB_BACKSTAGE_GAP.minZ, 0, KB_HALL_CEILING);
+  hang(KB_BACKSTAGE_GAP.minZ, KB_BACKSTAGE_GAP.maxZ, GAP_HEAD_Y, KB_HALL_CEILING);
+  hang(KB_BACKSTAGE_GAP.maxZ, KB_VESTIBULE.minZ, 0, KB_HALL_CEILING);
   const gapLen = KB_BACKSTAGE_GAP.maxZ - KB_BACKSTAGE_GAP.minZ;
-  addBox(partition, 0.12, 0.5, gapLen + 0.2, mats.matteBlack, KB_PARTITION_X, KB_DECK_HEIGHT - 0.25, (KB_BACKSTAGE_GAP.minZ + KB_BACKSTAGE_GAP.maxZ) / 2, "backstage-gap-valance", false);
+  addBox(partition, 0.12, 0.5, gapLen + 0.2, mats.matteBlack, KB_PARTITION_X, GAP_HEAD_Y + 0.25, (KB_BACKSTAGE_GAP.minZ + KB_BACKSTAGE_GAP.maxZ) / 2, "backstage-gap-valance", false);
   const trackLen = KB_VESTIBULE.minZ - KB_STAGE_FRONT_Z;
   const track = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, trackLen, 8), mats.steel);
   track.rotation.x = Math.PI / 2;
-  track.position.set(KB_PARTITION_X, KB_DECK_HEIGHT - 0.02, KB_STAGE_FRONT_Z + trackLen / 2);
+  track.position.set(KB_PARTITION_X, KB_HALL_CEILING - 0.05, KB_STAGE_FRONT_Z + trackLen / 2);
   partition.add(track);
   group.add(partition);
 }
@@ -117,7 +121,7 @@ function buildUpperStairs(group: THREE.Group, mats: SharedMaterials): void {
   group.add(stairs);
 }
 
-/** 2/F floor: corridor deck (stairwell open at z < KB_DECK_MIN_Z) and the glass room deck, with a safety rail. */
+/** 2/F floor: corridor deck (stairwell open at z < KB_DECK_MIN_Z) and the glass room deck; the hall side is the curtain wall. */
 function buildUpperDeck(group: THREE.Group, mats: SharedMaterials): void {
   const deck = new THREE.Group();
   deck.name = "upper-deck";
@@ -136,9 +140,8 @@ function buildUpperDeck(group: THREE.Group, mats: SharedMaterials): void {
     "deck-glass-room",
   );
 
-  // Two-rail steel balustrade along the hall edge and across the stairwell edge
+  // Two-rail steel balustrade across the stairwell edge
   const edges: Array<{ from: readonly [number, number]; to: readonly [number, number] }> = [
-    { from: [KB_PARTITION_X, KB_DECK_MIN_Z], to: [KB_PARTITION_X, KB_VESTIBULE.minZ] },
     { from: [KB_UPPER_STAIR.maxX, KB_DECK_MIN_Z], to: [KB_PARTITION_X, KB_DECK_MIN_Z] },
   ];
   const transforms: InstanceTransform[] = [];
@@ -161,40 +164,46 @@ function buildUpperDeck(group: THREE.Group, mats: SharedMaterials): void {
   rails.instanceMatrix.needsUpdate = true;
   rails.name = "deck-rail";
   deck.add(rails);
+
+  // Work light over the enclosed corridor deck
+  const light = new THREE.PointLight(0xfff1dc, 6, 7, 1.6);
+  light.position.set((KB_MIN_X + KB_PARTITION_X) / 2, KB_DECK_HEIGHT + 2.6, (KB_DECK_MIN_Z + KB_VESTIBULE.minZ) / 2);
+  light.name = "deck-light";
+  deck.add(light);
   group.add(deck);
 }
 
-/** Ground-floor entrance box under the glass room: acoustic-tiled faces, doorway toward the stage, chairs, outer door. */
+/** Ground-floor entrance box under the glass room: acoustic-tiled faces, doorway opening into the hall (+X), chairs, outer door. */
 function buildVestibule(group: THREE.Group, mats: SharedMaterials): void {
   const vestibule = new THREE.Group();
   vestibule.name = "entrance-vestibule";
   const v = KB_VESTIBULE;
 
-  // -Z face in two segments around the doorway; tiles face -Z toward the stage
-  for (const [a, b] of [[v.minX, KB_DOORWAY.minX], [KB_DOORWAY.maxX, v.maxX]] as const) {
-    addBox(vestibule, b - a, KB_DECK_HEIGHT, 0.2, mats.wallCharcoal, (a + b) / 2, KB_DECK_HEIGHT / 2, v.minZ, "vestibule-wall");
+  // Solid -Z face; tiles face -Z toward the stage
+  const frontLen = v.maxX - v.minX;
+  addBox(vestibule, frontLen, KB_DECK_HEIGHT, 0.2, mats.wallCharcoal, (v.minX + v.maxX) / 2, KB_DECK_HEIGHT / 2, v.minZ, "vestibule-wall");
+  const frontTiles = new THREE.Mesh(new THREE.PlaneGeometry(frontLen, KB_DECK_HEIGHT), acousticTileMaterial(frontLen, KB_DECK_HEIGHT));
+  frontTiles.rotation.y = Math.PI;
+  frontTiles.position.set((v.minX + v.maxX) / 2, KB_DECK_HEIGHT / 2, v.minZ - 0.101);
+  vestibule.add(frontTiles);
+  // +X face in two segments around the doorway; tiles face +X into the hall
+  for (const [a, b] of [[v.minZ, KB_DOORWAY.minZ], [KB_DOORWAY.maxZ, v.maxZ]] as const) {
+    addBox(vestibule, 0.2, KB_DECK_HEIGHT, b - a, mats.wallCharcoal, v.maxX, KB_DECK_HEIGHT / 2, (a + b) / 2, "vestibule-wall");
     const tiles = new THREE.Mesh(new THREE.PlaneGeometry(b - a, KB_DECK_HEIGHT), acousticTileMaterial(b - a, KB_DECK_HEIGHT));
-    tiles.rotation.y = Math.PI;
-    tiles.position.set((a + b) / 2, KB_DECK_HEIGHT / 2, v.minZ - 0.101);
+    tiles.rotation.y = Math.PI / 2;
+    tiles.position.set(v.maxX + 0.101, KB_DECK_HEIGHT / 2, (a + b) / 2);
     vestibule.add(tiles);
   }
-  // +X face looking into the hall; tiles face +X
-  const sideLen = v.maxZ - v.minZ;
-  addBox(vestibule, 0.2, KB_DECK_HEIGHT, sideLen, mats.wallCharcoal, v.maxX, KB_DECK_HEIGHT / 2, (v.minZ + v.maxZ) / 2, "vestibule-wall");
-  const sideTiles = new THREE.Mesh(new THREE.PlaneGeometry(sideLen, KB_DECK_HEIGHT), acousticTileMaterial(sideLen, KB_DECK_HEIGHT));
-  sideTiles.rotation.y = Math.PI / 2;
-  sideTiles.position.set(v.maxX + 0.101, KB_DECK_HEIGHT / 2, (v.minZ + v.maxZ) / 2);
-  vestibule.add(sideTiles);
   // Header over the doorway and steel trims
-  const doorCx = (KB_DOORWAY.minX + KB_DOORWAY.maxX) / 2;
-  const doorW = KB_DOORWAY.maxX - KB_DOORWAY.minX;
-  addBox(vestibule, doorW, KB_DECK_HEIGHT - 2.2, 0.2, mats.wallCharcoal, doorCx, 2.2 + (KB_DECK_HEIGHT - 2.2) / 2, v.minZ, "", false);
+  const doorCz = (KB_DOORWAY.minZ + KB_DOORWAY.maxZ) / 2;
+  const doorW = KB_DOORWAY.maxZ - KB_DOORWAY.minZ;
+  addBox(vestibule, 0.2, KB_DECK_HEIGHT - 2.2, doorW, mats.wallCharcoal, v.maxX, 2.2 + (KB_DECK_HEIGHT - 2.2) / 2, doorCz, "", false);
   const doorway = new THREE.Group();
   doorway.name = "entrance-doorway";
-  doorway.position.set(doorCx, 0, v.minZ);
-  addBox(doorway, 0.08, 2.24, 0.26, mats.frameBlack, -doorW / 2 - 0.04, 1.12, 0, "", false);
-  addBox(doorway, 0.08, 2.24, 0.26, mats.frameBlack, doorW / 2 + 0.04, 1.12, 0, "", false);
-  addBox(doorway, doorW + 0.16, 0.08, 0.26, mats.frameBlack, 0, 2.24, 0, "", false);
+  doorway.position.set(v.maxX, 0, doorCz);
+  addBox(doorway, 0.26, 2.24, 0.08, mats.frameBlack, 0, 1.12, -doorW / 2 - 0.04, "", false);
+  addBox(doorway, 0.26, 2.24, 0.08, mats.frameBlack, 0, 1.12, doorW / 2 + 0.04, "", false);
+  addBox(doorway, 0.26, 0.08, doorW + 0.16, mats.frameBlack, 0, 2.24, 0, "", false);
   vestibule.add(doorway);
 
   // Warm light inside so the doorway reads bright from the dark hall
@@ -220,7 +229,10 @@ function buildVestibule(group: THREE.Group, mats: SharedMaterials): void {
   group.add(vestibule);
 }
 
-/** Glass-walled room on 2/F over the vestibule, glazed toward the stage (-Z) and the hall (+X), shelves of plushies inside. */
+/**
+ * Glass-walled room on 2/F over the vestibule with floor-to-ceiling glazing toward the stage (-Z) and the hall (+X).
+ * The -Z side over the backstage corridor stays open so the deck corridor walks straight in. Shelves of plushies inside.
+ */
 function buildGlassRoom(group: THREE.Group, mats: SharedMaterials): void {
   const room = new THREE.Group();
   room.name = "glass-room";
@@ -231,10 +243,12 @@ function buildGlassRoom(group: THREE.Group, mats: SharedMaterials): void {
   const cz = (v.minZ + v.maxZ) / 2;
   const sillH = GLASS_SILL_Y - KB_DECK_HEIGHT;
   const headerH = GLASS_ROOM_CEILING_Y - GLASS_TOP_Y;
+  const frontW = v.maxX - KB_PARTITION_X;
+  const frontCx = (KB_PARTITION_X + v.maxX) / 2;
 
-  addBox(room, w, sillH, 0.15, mats.wallCharcoal, cx, KB_DECK_HEIGHT + sillH / 2, v.minZ, "glass-room-sill");
-  addBox(room, w, headerH, 0.15, mats.wallCharcoal, cx, GLASS_TOP_Y + headerH / 2, v.minZ, "glass-room-header");
-  glazing(room, mats, [v.minX + 0.1, v.maxX - 0.1], v.minZ, "z");
+  addBox(room, frontW, sillH, 0.15, mats.wallCharcoal, frontCx, KB_DECK_HEIGHT + sillH / 2, v.minZ, "glass-room-sill");
+  addBox(room, frontW, headerH, 0.15, mats.wallCharcoal, frontCx, GLASS_TOP_Y + headerH / 2, v.minZ, "glass-room-header");
+  glazing(room, mats, [KB_PARTITION_X + 0.05, v.maxX - 0.1], v.minZ, "z");
   addBox(room, 0.15, sillH, d, mats.wallCharcoal, v.maxX, KB_DECK_HEIGHT + sillH / 2, cz, "glass-room-sill");
   addBox(room, 0.15, headerH, d, mats.wallCharcoal, v.maxX, GLASS_TOP_Y + headerH / 2, cz, "glass-room-header");
   glazing(room, mats, [v.minZ + 0.1, v.maxZ - 0.1], v.maxX, "x");

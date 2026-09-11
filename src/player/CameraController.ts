@@ -169,7 +169,8 @@ export function resolveCameraDistance(
         x < collider.maxX + 0.2 &&
         z > collider.minZ - 0.2 &&
         z < collider.maxZ + 0.2 &&
-        (collider.maxY === undefined || y < collider.maxY + 0.2),
+        (collider.maxY === undefined || y < collider.maxY + 0.2) &&
+        (collider.minY === undefined || y > collider.minY - 0.2),
     );
     if (blocked) {
       return Math.max(0.15, (desiredDistance * (step - 1)) / sampleCount);

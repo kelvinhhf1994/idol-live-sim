@@ -51,12 +51,16 @@ when facing the audience); the WC door, fridge, PA desk and sofa are on the +X s
 - 2/F deck, height 3.0: corridor deck x ∈ [-6.5, -4.5], z ∈ [-6.0, 1.2]; glass room deck
   x ∈ [-6.5, -3.0], z ∈ [1.2, 4.0].
 - Entrance vestibule (ground floor under the glass room): x ∈ [-6.5, -3.0], z ∈ [1.2, 4.0]. Doorway
-  1.6 m wide on its -Z face at x ∈ [-5.0, -3.4]. Closed outer door with 入口 sign on the +Z wall.
-  Folding chairs inside. Player spawn (-4.2, 0, 2.8), yaw 0 (facing -Z through the doorway).
-- Glass room (2/F over the vestibule): walls with glazing on the -Z face (facing the stage) and the
-  +X face (facing the hall); sill 0.9 above the deck (y 3.9), glass 1.5 tall (to y 5.4); thin dark
-  frames; room ceiling at 5.8. Shelves inside lined with instanced colourful plushie boxes; warm
-  interior light.
+  1.2 m wide on its +X face at z ∈ [1.6, 2.8], opening into the rear of the hall toward the PA desk
+  (revised 2026-09-11 from the -Z face after the first visual review). The -Z face is solid tiles.
+  Closed outer door with 入口 sign on the +Z wall. Folding chairs inside. Player spawn (-4.6, 0, 2.2),
+  yaw -π/2 (facing +X through the doorway).
+- Glass room (2/F over the vestibule): floor-to-ceiling glazing (落地玻璃) on the -Z face over the hall
+  side (x ∈ [-4.5, -3.0], facing the stage) and on the +X face (facing the hall); the -Z side over
+  the backstage corridor is open so the corridor deck walks straight in; thin dark frames; room
+  ceiling at 5.8. Shelves inside lined with instanced colourful plushie boxes; warm interior light.
+- The partition curtain at x = -4.5 runs floor to ceiling, so the 2/F corridor deck is walled off from
+  the hall (no balustrade, no jumping down); only the stairwell edge has a rail.
 - Audience floor: x ∈ [-4.5, 6.5], z ∈ [-7.4, 4.0] minus the vestibule.
 
 ## Multi-level ground (engine change)
@@ -73,8 +77,10 @@ callers and venues are unaffected.
 - Each stair tread is a platform; 0.2 m steps are within the existing 0.22 step tolerance.
 - A player on the deck cannot walk off its edge: the drop to 0 exceeds 0.22 so movement is blocked.
   Deck edges therefore act as railings without extra colliders.
-- Ground-floor walls under the deck (partition, vestibule walls) carry `maxY: 3.0` so they stop
-  ignoring the player once `baseY >= 3.0`, using the existing collider semantics. No `minY` is needed.
+- The 1/F wall between the backstage corridor and the vestibule carries `maxY: 3.0` so the corridor
+  deck walks over it into the glass room. Walls that exist only on 2/F (over the curtain gap and over
+  the vestibule doorway) carry `minY: 3.0`: `Aabb2.minY` is ignored while `baseY < minY`, so ground
+  floor players pass underneath while 2/F players (walking or jumping) are blocked.
 
 Jumping under the deck never reaches `3.0 - 0.22`, so a ground player cannot pop onto the deck.
 
@@ -102,7 +108,7 @@ New folder `src/scene/kowloonBay/` so the builder does not become another 2300-l
 - `rigging.ts` – pipe grid, fluorescent battens (house lights), moving heads with fake beam cones,
   PAR cans, hung line arrays.
 - `backstage.ts` – partition curtains with gap, corridor, stage stairs, 2/F stairs with stringers and
-  handrails, corridor deck with edge rail, glass room (frames, glass, shelves, plushie boxes, light).
+  handrails, corridor deck with stairwell rail, glass room (frames, glass, shelves, plushie boxes, light).
 - `props.ts` – WC door with EXIT sign and clock, bin, throne chair, ladder with plushie net, fridge,
   PA desk with mixer and monitors, sofa, posters, long white folding table, ticket table with lamp,
   red pony (knockable), folding chairs in the vestibule.
@@ -132,7 +138,7 @@ remain the regression check. `createVenue.ts` dispatches `"kowloon-bay"` to the 
   3.0; is blocked at the deck edge; walls with `maxY: 3.0` do not block a player standing at 3.0.
 - `src/config/kowloonBayVenue.test.ts`: consecutive stair treads differ by ≤ 0.22 and abut; the top
   tread abuts the deck; spawn lies inside the vestibule, inside bounds and outside every collider; the
-  backstage gap and the doorway have no collider; partition / vestibule colliders have `maxY <= 3.0`;
+  backstage gap and the doorway are only walled on 2/F (`minY: 3.0`); the partition is full height;
   performer line lies inside the stage; all audience points are on the audience floor.
 - `src/scene/kowloonBay/createKowloonBayVenue.test.ts`: builds under Node (canvas textures guard on
   `typeof document`), returns `houseLights` (default off) and colliders equal to the definition,

@@ -34,6 +34,20 @@ describe("moveCircleWithCollisions", () => {
     ).toBe(-1);
   });
 
+  it("ignores an upper-floor wall (minY) for a player below it but blocks one standing at its base", () => {
+    const upperWall = { minX: -1, maxX: 1, minZ: -0.1, maxZ: 0.1, minY: 3.0 };
+
+    expect(
+      moveCircleWithCollisions({ x: 0, z: 1 }, { x: 0, z: -2 }, 0.34, [upperWall], 0).z,
+    ).toBe(-1);
+    expect(
+      moveCircleWithCollisions({ x: 0, z: 1 }, { x: 0, z: -2 }, 0.34, [upperWall], 3.0).z,
+    ).toBe(1);
+    expect(
+      moveCircleWithCollisions({ x: 0, z: 1 }, { x: 0, z: -2 }, 0.34, [upperWall], 3.4).z,
+    ).toBe(1);
+  });
+
   it("does not tunnel through a thin low barrier with a large delta", () => {
     const barrier = { minX: -1, maxX: 1, minZ: -0.02, maxZ: 0.02, maxY: 0.75 };
     const result = moveCircleWithCollisions(

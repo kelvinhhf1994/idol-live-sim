@@ -10,6 +10,7 @@ import {
   KB_DOORWAY,
   KB_PARTITION_X,
   KB_REAR_WALL_Z,
+  KB_STAGE_FRONT_Z,
   KB_STAGE_HEIGHT,
   KB_UPPER_STAIR,
   KB_VESTIBULE,
@@ -94,39 +95,41 @@ describe("KOWLOON_BAY_VENUE configuration", () => {
     }
   });
 
-  it("leaves the vestibule doorway and the backstage curtain gap free of colliders", () => {
-    const doorwayX = (KB_DOORWAY.minX + KB_DOORWAY.maxX) / 2;
-    const doorwayBlockers = venue.colliders.filter(
-      (c) => c.minZ <= KB_VESTIBULE.minZ && c.maxZ >= KB_VESTIBULE.minZ && c.minX < doorwayX && c.maxX > doorwayX,
+  it("opens the vestibule doorway (+X face) and the backstage curtain gap on 1/F, but walls both off on 2/F", () => {
+    const doorwayZ = (KB_DOORWAY.minZ + KB_DOORWAY.maxZ) / 2;
+    const doorwayWalls = venue.colliders.filter(
+      (c) => c.minX <= KB_VESTIBULE.maxX && c.maxX >= KB_VESTIBULE.maxX && c.minZ < doorwayZ && c.maxZ > doorwayZ,
     );
-    expect(doorwayBlockers).toHaveLength(0);
+    expect(doorwayWalls).toHaveLength(1);
+    expect(doorwayWalls[0].minY).toBe(KB_DECK_HEIGHT);
     const gapZ = (KB_BACKSTAGE_GAP.minZ + KB_BACKSTAGE_GAP.maxZ) / 2;
-    const gapBlockers = venue.colliders.filter(
+    const gapWalls = venue.colliders.filter(
       (c) => c.minX <= KB_PARTITION_X && c.maxX >= KB_PARTITION_X && c.minZ < gapZ && c.maxZ > gapZ,
     );
-    expect(gapBlockers).toHaveLength(0);
+    expect(gapWalls).toHaveLength(1);
+    expect(gapWalls[0].minY).toBe(KB_DECK_HEIGHT);
   });
 
-  it("caps every wall under the 2/F at deck height so the deck is walkable above them", () => {
-    const underDeck = venue.colliders.filter(
-      (c) =>
-        c.maxX <= KB_PARTITION_X + 0.1 &&
-        c.minX >= venue.bounds.minX &&
-        c.minZ >= KB_DECK_MIN_Z &&
-        c.maxX - c.minX < 0.3,
+  it("walls the 2/F off from the hall: the partition is full height and only the corridor-to-glass-room wall is capped", () => {
+    const partitionWalls = venue.colliders.filter(
+      (c) => c.minX <= KB_PARTITION_X && c.maxX >= KB_PARTITION_X && c.maxX - c.minX < 0.3 && c.minZ >= KB_STAGE_FRONT_Z,
     );
-    expect(underDeck.length).toBeGreaterThan(0);
-    for (const c of underDeck) expect(c.maxY).toBe(KB_DECK_HEIGHT);
-    // Walls crossing the vestibule's -Z face (the outer shell wall sits outside bounds and is excluded)
+    expect(partitionWalls.length).toBeGreaterThanOrEqual(3);
+    for (const c of partitionWalls) expect(c.maxY).toBeUndefined();
+    // Walls along the vestibule's -Z face (excludes the outer shell wall outside bounds and the thin partition end)
     const vestibuleFace = venue.colliders.filter(
       (c) =>
         c.minZ < KB_VESTIBULE.minZ &&
         c.maxZ > KB_VESTIBULE.minZ &&
         c.minX >= venue.bounds.minX &&
-        c.maxX <= KB_VESTIBULE.maxX + 0.1,
+        c.maxX <= KB_VESTIBULE.maxX + 0.1 &&
+        c.maxX - c.minX >= 0.3,
     );
-    expect(vestibuleFace.length).toBeGreaterThanOrEqual(2);
-    for (const c of vestibuleFace) expect(c.maxY).toBe(KB_DECK_HEIGHT);
+    expect(vestibuleFace).toHaveLength(2);
+    const corridorSide = vestibuleFace.find((c) => c.maxX <= KB_PARTITION_X);
+    const hallSide = vestibuleFace.find((c) => c.minX >= KB_PARTITION_X);
+    expect(corridorSide?.maxY).toBe(KB_DECK_HEIGHT);
+    expect(hallSide?.maxY).toBeUndefined();
   });
 
   it("positions the audience on the floor in front of the walkway", () => {

@@ -246,7 +246,7 @@ export const KB_DECK_HEIGHT = 3.0; // 2/F floor level
 export const KB_UPPER_STAIR = { minX: -6.5, maxX: -5.5, startZ: -10.2, tread: 0.28, rise: 0.2, steps: 15 } as const;
 export const KB_DECK_MIN_Z = KB_UPPER_STAIR.startZ + KB_UPPER_STAIR.tread * KB_UPPER_STAIR.steps; // -6.0
 export const KB_VESTIBULE = { minX: -6.5, maxX: -3.0, minZ: 1.2, maxZ: 4.0 } as const; // Entrance box; glass room sits on top
-export const KB_DOORWAY = { minX: -4.4, maxX: -3.2 } as const; // Vestibule doorway on its -Z face
+export const KB_DOORWAY = { minZ: 1.6, maxZ: 2.8 } as const; // Vestibule doorway on its +X face, opening into the rear of the hall
 export const KB_WC_BLOCK = { minX: 4.5, maxX: 6.5, minZ: -11.0, maxZ: -7.6 } as const; // WC room beside the stage (+X)
 
 const kbStageBounds: Aabb2 = { minX: -4.5, maxX: 4.5, minZ: KB_BACK_WALL_Z, maxZ: KB_STAGE_FRONT_Z };
@@ -289,8 +289,8 @@ export const KOWLOON_BAY_VENUE: VenueDefinition = {
   id: "kowloon-bay-live-house-01",
   name: "九龍灣",
   scene: { kind: "procedural", builderId: "kowloon-bay" },
-  // Spawn inside the entrance vestibule facing the doorway (-Z)
-  spawn: { x: -3.8, y: 0, z: 2.8, yaw: 0 },
+  // Spawn inside the entrance vestibule facing the doorway (+X)
+  spawn: { x: -4.6, y: 0, z: 2.2, yaw: -Math.PI / 2 },
   bounds: { minX: KB_MIN_X, maxX: KB_MAX_X, minZ: KB_BACK_WALL_Z, maxZ: KB_REAR_WALL_Z },
   cameraBounds: { minX: KB_MIN_X + 0.2, maxX: KB_MAX_X - 0.2, minZ: KB_BACK_WALL_Z + 0.2, maxZ: KB_REAR_WALL_Z - 0.2 },
   colliders: [
@@ -302,13 +302,18 @@ export const KOWLOON_BAY_VENUE: VenueDefinition = {
     { ...KB_WC_BLOCK },
     kbStageCollider,
     kbWalkway,
-    // Backstage curtain partition with the gap; 2/F players walk over it (maxY = deck)
-    { minX: KB_PARTITION_X - 0.1, maxX: KB_PARTITION_X + 0.1, minZ: KB_STAGE_FRONT_Z, maxZ: KB_BACKSTAGE_GAP.minZ, maxY: KB_DECK_HEIGHT },
-    { minX: KB_PARTITION_X - 0.1, maxX: KB_PARTITION_X + 0.1, minZ: KB_BACKSTAGE_GAP.maxZ, maxZ: KB_VESTIBULE.minZ + 0.1, maxY: KB_DECK_HEIGHT },
-    // Vestibule walls (glass room deck on top); doorway gap on the -Z face
-    { minX: KB_VESTIBULE.minX, maxX: KB_DOORWAY.minX, minZ: KB_VESTIBULE.minZ - 0.1, maxZ: KB_VESTIBULE.minZ + 0.1, maxY: KB_DECK_HEIGHT },
-    { minX: KB_DOORWAY.maxX, maxX: KB_VESTIBULE.maxX, minZ: KB_VESTIBULE.minZ - 0.1, maxZ: KB_VESTIBULE.minZ + 0.1, maxY: KB_DECK_HEIGHT },
-    { minX: KB_VESTIBULE.maxX - 0.1, maxX: KB_VESTIBULE.maxX + 0.1, minZ: KB_VESTIBULE.minZ, maxZ: KB_VESTIBULE.maxZ, maxY: KB_DECK_HEIGHT },
+    // Backstage curtain partition, floor to ceiling, with the idol gap on 1/F only (the 2/F wall over the gap has minY)
+    { minX: KB_PARTITION_X - 0.1, maxX: KB_PARTITION_X + 0.1, minZ: KB_STAGE_FRONT_Z, maxZ: KB_BACKSTAGE_GAP.minZ },
+    { minX: KB_PARTITION_X - 0.1, maxX: KB_PARTITION_X + 0.1, minZ: KB_BACKSTAGE_GAP.minZ, maxZ: KB_BACKSTAGE_GAP.maxZ, minY: KB_DECK_HEIGHT },
+    { minX: KB_PARTITION_X - 0.1, maxX: KB_PARTITION_X + 0.1, minZ: KB_BACKSTAGE_GAP.maxZ, maxZ: KB_VESTIBULE.minZ + 0.1 },
+    // Vestibule -Z face: corridor side is a 1/F wall only (the deck corridor opens into the glass room above it);
+    // hall side carries the glass room's stage-facing glazing, so it is full height
+    { minX: KB_VESTIBULE.minX, maxX: KB_PARTITION_X, minZ: KB_VESTIBULE.minZ - 0.1, maxZ: KB_VESTIBULE.minZ + 0.1, maxY: KB_DECK_HEIGHT },
+    { minX: KB_PARTITION_X, maxX: KB_VESTIBULE.maxX, minZ: KB_VESTIBULE.minZ - 0.1, maxZ: KB_VESTIBULE.minZ + 0.1 },
+    // Vestibule +X face: 1/F doorway into the hall, glass room glazing above it
+    { minX: KB_VESTIBULE.maxX - 0.1, maxX: KB_VESTIBULE.maxX + 0.1, minZ: KB_VESTIBULE.minZ, maxZ: KB_DOORWAY.minZ },
+    { minX: KB_VESTIBULE.maxX - 0.1, maxX: KB_VESTIBULE.maxX + 0.1, minZ: KB_DOORWAY.minZ, maxZ: KB_DOORWAY.maxZ, minY: KB_DECK_HEIGHT },
+    { minX: KB_VESTIBULE.maxX - 0.1, maxX: KB_VESTIBULE.maxX + 0.1, minZ: KB_DOORWAY.maxZ, maxZ: KB_VESTIBULE.maxZ },
     { minX: -6.4, maxX: -5.2, minZ: 2.0, maxZ: 3.8, maxY: 1.0 }, // Folding chairs stacked in the vestibule
     // Backstage corridor road cases along the -X wall
     { minX: -6.5, maxX: -6.0, minZ: -3.4, maxZ: -2.6, maxY: 1.1 },
@@ -321,8 +326,8 @@ export const KOWLOON_BAY_VENUE: VenueDefinition = {
     { minX: 2.6, maxX: 5.4, minZ: 2.6, maxZ: 3.4, maxY: 1.2 }, // PA desk facing the stage
     { minX: 2.9, maxX: 5.1, minZ: 1.4, maxZ: 2.3, maxY: 1.0 }, // Black sofa in front of the desk
     // Rear tables
-    { minX: -2.1, maxX: -0.3, minZ: 3.2, maxZ: 3.8, maxY: 0.8 }, // Long white folding table
-    { minX: -2.8, maxX: -2.0, minZ: 1.4, maxZ: 2.0, maxY: 0.9 }, // Ticket table with lamp beside the doorway
+    { minX: -1.9, maxX: -0.1, minZ: 3.2, maxZ: 3.8, maxY: 0.8 }, // Long white folding table
+    { minX: -2.9, maxX: -2.2, minZ: 3.0, maxZ: 3.6, maxY: 0.9 }, // Ticket table with lamp beside the doorway
   ],
   crowdBarrier: kbWalkway,
   platforms: [

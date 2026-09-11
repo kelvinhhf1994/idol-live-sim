@@ -180,7 +180,7 @@ function buildTables(group: THREE.Group, mats: SharedMaterials): void {
   const white = new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.6 });
   const longTable = new THREE.Group();
   longTable.name = "long-table";
-  longTable.position.set(-1.2, 0, 3.5);
+  longTable.position.set(-1.0, 0, 3.5);
   addBox(longTable, 1.8, 0.04, 0.6, white, 0, 0.74, 0);
   for (const [x, z] of [[-0.8, -0.25], [0.8, -0.25], [-0.8, 0.25], [0.8, 0.25]] as const) {
     addBox(longTable, 0.04, 0.72, 0.04, mats.steel, x, 0.36, z, "", false);
@@ -189,7 +189,7 @@ function buildTables(group: THREE.Group, mats: SharedMaterials): void {
 
   const ticket = new THREE.Group();
   ticket.name = "ticket-table";
-  ticket.position.set(-2.4, 0, 1.7);
+  ticket.position.set(-2.55, 0, 3.3);
   addBox(ticket, 0.7, 0.04, 0.5, white, 0, 0.86, 0);
   for (const [x, z] of [[-0.3, -0.2], [0.3, -0.2], [-0.3, 0.2], [0.3, 0.2]] as const) {
     addBox(ticket, 0.03, 0.84, 0.03, mats.steel, x, 0.42, z, "", false);

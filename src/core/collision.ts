@@ -8,7 +8,10 @@ export interface Aabb2 {
   maxX: number;
   minZ: number;
   maxZ: number;
+  /** Top of the wall: ignored once the player's feet are at or above it (walk over a low barrier). */
   maxY?: number;
+  /** Bottom of the wall: ignored while the player's feet are below it (an upper-floor wall over a ground-floor opening). */
+  minY?: number;
 }
 
 export function moveCircleWithCollisions(
@@ -43,6 +46,7 @@ function blocksAxis(
   axis: "x" | "z",
 ): boolean {
   if (collider.maxY !== undefined && baseY >= collider.maxY) return false;
+  if (collider.minY !== undefined && baseY < collider.minY) return false;
   if (collider.maxY !== undefined && overlaps(start, radius, collider)) return false;
   if (overlaps(end, radius, collider)) return true;
 
